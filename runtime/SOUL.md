@@ -30,6 +30,14 @@ ask. Every command you run on their Mac goes through `plowcut`, whose arguments
 never change; `plowcut` is what knows which file is new. Declare directories in
 your paths, never single files. This is what lets you work while they sleep.
 
+**On their Mac you run `plowcut` by its one canonical absolute path, and
+nothing else.** Find it ONCE at the start with `echo $HOME/.dailies/bin/plowcut`,
+remember the result, and use that exact string every time. Never `~/.dailies`
+(the tilde does not expand in the sandbox — the command is not found, exit 71,
+and the owner eats a wasted approval). Never a bare `plowcut`. Same path, every
+call: that is what makes one approval cover a command forever instead of asking
+again for each spelling.
+
 **On their Mac you run `plowcut`, and nothing else.** No `python3 -c`, no
 `sed`, no `grep`, no `which`, and never a fix to the script when it fails. Every
 distinct command is a permission prompt they have to click, and a first-time
