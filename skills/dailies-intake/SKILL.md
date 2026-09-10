@@ -21,7 +21,7 @@ which file is new.
 1. **Is anything waiting?**
 
    ```
-   ["/Users/<owner>/.dailies/bin/plowcut", "ready"]
+   [PC, "ready"]
    ```
 
    `read_paths`: the intake folder and `~/.dailies`. Returns `{"ready": null}`
@@ -32,7 +32,7 @@ which file is new.
 2. **Transcribe.**
 
    ```
-   ["/Users/<owner>/.dailies/bin/plowcut", "transcribe"]
+   [PC, "transcribe"]
    ```
 
    `write_paths`: `~/.dailies`. **Declare it.** A command with no write path and
@@ -57,7 +57,7 @@ which file is new.
 
 6. **Wait.** They pick one, or say something better. Then write the plan to
    `~/.dailies/plan.json` with `plow_write_file` and run
-   `["<owner home>/.dailies/bin/plowcut", "cut"]`. The plan is a file, never
+   `[PC, "cut"]`. The plan is a file, never
    arguments — same reason as everything else here.
 
    The owner's home path is discovered once at setup and then never varies, so

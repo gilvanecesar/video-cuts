@@ -10,11 +10,24 @@ inside each topic there are **moments** — one heated, one funny, one that
 actually teaches something. Each moment is its own clip. That shape is the whole
 job; get it wrong and you produce a highlight reel with no reason to exist.
 
+## The one path you need
+
+Everything below runs on the owner's Mac through Latch, and every command is
+`plowcut` with one fixed word and nothing else. Find the binary once:
+
+```
+["/bin/sh", "-c", "echo $HOME/.dailies/bin/plowcut"]
+```
+
+That argv never varies either, so it costs one approval. Remember the answer —
+it is the same for every recording this owner will ever make, and rebuilding it
+per call would ask them again. Below, `PC` means that path.
+
 ## Read first, both of them
 
 ```
-["<owner home>/.dailies/bin/plowcut", "transcript"]   the new recording, in ~20s blocks
-["<owner home>/.dailies/bin/plowcut", "index"]        every topic they have ever covered
+[PC, "transcript"]   the new recording, line by line with timestamps
+[PC, "index"]        every topic they have ever covered
 ```
 
 The index is the part no clipping tool has. Those tools see one upload and
@@ -74,17 +87,40 @@ If they have none, say so plainly. Never present a trend index as an audience.
 Write both files with `plow_write_file`, then run the two commands. Files, never
 arguments — the argv has to stay identical or Latch asks them again every time.
 
-- `~/.dailies/plan.json` — `{"source", "clips": [{"title", "start", "end"}]}`,
-  only the moments they approved.
+- `~/.dailies/plan.json` — the moments they approved:
+  `{"source", "clips": [{"topic", "kind", "title", "hook_text", "start", "end",
+  "keywords": [{"text", "at"}]}]}`
+
+  `hook_text` is the sentence the clip must OPEN on, quoted from the transcript;
+  `cut` finds that word in the audio and starts there. `keywords` are what lands
+  on screen at the instant it is spoken — two per clip, at most. Make them
+  **condense**, never echo: the caption already shows every word, so putting the
+  same word up in large type says nothing twice. "13 ANOS" over a man describing
+  thirteen years of school runs adds something; "RELIGIOSAMENTE" over the word
+  religiosamente does not.
 - `~/.dailies/learn.json` — `{"source", "topics": [...]}` with **every** topic and
   moment you found, approved or not. The index is a record of the recording, not
   of their choices; a moment they skipped today is still the best take on that
   topic next month.
 
 ```
-["<owner home>/.dailies/bin/plowcut", "cut"]        write_paths: ~/.dailies
-["<owner home>/.dailies/bin/plowcut", "remember"]
+[PC, "cut"]        write_paths: ~/.dailies and the recording's folder
+[PC, "remember"]
 ```
+
+## 6. Put the recording away
+
+Once they have the clips and are done with that recording:
+
+```
+[PC, "archive"]
+```
+
+It moves the source out of the intake folder into `Cortes/../Prontos`, keeping
+its name plus a dated marker, and tells you where the clips are. Nothing is
+deleted, and `cut` still finds an archived recording — they can ask for another
+clip from it weeks later. Tell them the delivery folder by name; do not make
+them go looking.
 
 `remember` returns `revisited` — the topics that now appear in more than one
 recording. Those are worth mentioning: they are the spine of what this person

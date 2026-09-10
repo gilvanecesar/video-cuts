@@ -74,7 +74,11 @@ no `plow-agents login`. Conserto: rodar `/Applications/Python 3.13/Install
 Certificates.command`. Vale também pro `agent_index_client.py`, que é o
 registro obrigatório no Agent Index.
 
-**6. A imagem base é amd64** e roda emulada no M4. Não importa: o peso (ffmpeg,
+**6. O sandbox do Latch nega a GPU.** O Metal do whisper falha dentro dele
+(4,5x mais lento no CPU: 23s vs 103s para 9,5 min) e o Vision do `facefind`
+não acha rosto pelo mesmo motivo. O `plowcut` tenta GPU e cai pra CPU sozinho.
+
+**7. A imagem base é amd64** e roda emulada no M4. Não importa: o peso (ffmpeg,
 whisper) roda nativo no Mac via Latch. Mas se o agente parecer lerdo, a causa é
 essa, não o código.
 
@@ -97,9 +101,11 @@ plow-agents lines | mint <ln_> | rotate | revoke
 
 | | |
 |---|---|
-| entrada | `~/Movies/Dailies/` |
+| entrada (caixa de entrada) | `~/Movies/Dailies/` |
+| cortes prontos | `~/Movies/Dailies/Cortes/<nome>/` |
+| originais já usados | `~/Movies/Dailies/Prontos/` (com marcador e data) |
 | estado, plano, modelo | `~/.dailies/` |
-| trabalho e cortes | `~/.dailies/work/<stem>/clips/` |
+| áudio e transcrição | `~/.dailies/work/<stem>/` |
 | credencial do agente | `./plow-credentials` — **git-ignored, modo 600** |
 | repos de referência | `../ref/` (plow-agents, plow-hermes-agent, latch, life-assistant) |
 

@@ -12,6 +12,7 @@ in the arguments the agent sends.
     plowcut index       every topic this owner has covered, across recordings
     plowcut remember    fold ~/.dailies/learn.json into that index
     plowcut cut         cut the clips named in ~/.dailies/plan.json
+    plowcut archive     put the finished recording away, marked and dated
     plowcut transcribe  transcribe the one that is waiting
     plowcut status      what plowcut knows
 
@@ -42,6 +43,12 @@ def config():
     c = load(CONFIG, {})
     c.setdefault("intake", str(DEFAULT_INTAKE))
     c.setdefault("work", str(HOME / "work"))
+    # Where finished clips land, and where a recording goes once it is done
+    # with. Both live beside the intake folder, in the open: work/ holds the
+    # audio and transcript, which nobody wants to look at.
+    c.setdefault("delivery", str(DEFAULT_INTAKE / "Cortes"))
+    c.setdefault("archive", str(DEFAULT_INTAKE / "Prontos"))
+    c.setdefault("done_marker", "cortado")
     c.setdefault("settle_seconds", 90)   # size must hold still this long
     # small.en, not base.en: base garbles roughly a third of a recording, and
     # every topic and moment the agent picks rests on this text. 465MB and
@@ -91,6 +98,24 @@ def ready():
             "duration_s": probe_duration(candidate)}
 
 
+def whisper(args, timeout=3600):
+    """whisper-cli, on the GPU when it is allowed and on the CPU when it is not.
+
+    Latch's seatbelt sandbox denies GPU access, so Metal buffer allocation fails
+    inside it and succeeds outside — the same denial is why Vision finds no
+    faces there. Metal is about 4.5x faster, so try it and fall back rather than
+    paying the CPU price on every run."""
+    r = subprocess.run(["whisper-cli", *args], capture_output=True, text=True,
+                       timeout=timeout)
+    blob = (r.stdout or "") + (r.stderr or "")
+    if r.returncode != 0 and ("metal" in blob.lower() or "ggml_gallocr" in blob
+                              or "buffer" in blob.lower()):
+        note("GPU unavailable here — retrying on CPU")
+        r = subprocess.run(["whisper-cli", "-ng", *args], capture_output=True,
+                           text=True, timeout=timeout)
+    return r
+
+
 def probe_size(f):
     try:
         out = subprocess.run(
@@ -125,7 +150,7 @@ def transcribe():
 
     note(f"extracting audio from {src.name}")
     wav = work / "audio.wav"
-    subprocess.run(["PLACEHOLDER_FF", "-nostdin", "-y", "-i", str(src),
+    subprocess.run([ffbin(), "-nostdin", "-y", "-i", str(src),
                     "-ac", "1", "-ar", "16000", "-vn", str(wav)],
                    check=True, capture_output=True)
 
@@ -141,9 +166,7 @@ def transcribe():
     # never spoken, and nothing about the output would look broken.
     lang = c["language"]
     if lang == "auto":
-        det = subprocess.run(["whisper-cli", "-m", str(model), "-l", "auto",
-                              "-dl", "-f", str(wav)],
-                             capture_output=True, text=True, timeout=600)
+        det = whisper(["-m", str(model), "-l", "auto", "-dl", "-f", str(wav)])
         m = re.search(r"auto-detected language:\s*([a-z]{2})",
                       det.stdout + det.stderr)
         if not m:
@@ -155,10 +178,11 @@ def transcribe():
     # One pass, one word per cue (-ml 1 -sow). Sentences are rebuilt from the
     # words below; going the other way is impossible, and the clip has to open
     # on an exact word, not on whatever boundary Whisper felt like drawing.
-    subprocess.run(["whisper-cli", "-m", str(model), "-l", lang,
-                    "-ml", "1", "-sow",
-                    "-f", str(wav), "-oj", "-of", str(work / "transcript")],
-                   check=True, capture_output=True)
+    r = whisper(["-m", str(model), "-l", lang, "-ml", "1", "-sow",
+                 "-f", str(wav), "-oj", "-of", str(work / "transcript")])
+    if r.returncode != 0:
+        raise subprocess.CalledProcessError(r.returncode, "whisper-cli",
+                                            output=r.stdout, stderr=r.stderr)
 
     st = load(STATE, {})
     st.setdefault("seen", {})[str(src)] = {"at": time.time(), "work": str(work),
@@ -470,13 +494,31 @@ def cut():
         return {"error": "no plan", "expected": str(plan_path)}
     plan = json.loads(plan_path.read_text())
 
+    # Filenames with accents reach us in different unicode normal forms
+    # depending on who typed them; compare in NFC or "VOCÊ" never matches "VOCÊ".
+    import unicodedata
+    want = unicodedata.normalize("NFC", plan["source"])
     work = Path(c["work"]) / plan["source"]
-    src = next((f for f in Path(c["intake"]).iterdir()
-                if f.stem == plan["source"] and not f.name.startswith(".")), None)
+    # Look in the archive too: a recording that has been put away can still
+    # give up another clip weeks later, and the owner should not have to drag
+    # the file back to ask for one.
+    src = None
+    for folder in (Path(c["intake"]), Path(c["archive"])):
+        if not folder.is_dir():
+            continue
+        for f in folder.iterdir():
+            stem = unicodedata.normalize("NFC", f.stem)
+            if not f.name.startswith(".") and (
+                    stem == want or stem.startswith(want + " [")):
+                src = f
+                break
+        if src:
+            break
     if not src:
         return {"error": f"source recording not found for stem {plan['source']!r}"}
 
-    outdir = work / "clips"; outdir.mkdir(parents=True, exist_ok=True)
+    outdir = Path(c["delivery"]) / src.stem
+    outdir.mkdir(parents=True, exist_ok=True)
     ws = words(work)
 
     captions = can_caption()
@@ -655,20 +697,55 @@ def remember():
                                 if len({o["source"] for o in v["occurrences"]}) > 1)}
 
 
+def archive():
+    """Put the finished recording away and say where everything went.
+
+    The intake folder is an inbox: a recording that has been cut should leave
+    it, marked, so that what remains is only what still needs work. Nothing is
+    deleted — the file moves and keeps its name plus a dated marker."""
+    c, st = config(), load(STATE, {})
+    seen = st.get("seen", {})
+    if not seen:
+        return {"error": "nothing has been transcribed yet"}
+    src_path, meta = max(seen.items(), key=lambda kv: kv[1]["at"])
+    src = Path(src_path)
+    if not src.exists():
+        return {"archived": None, "reason": "already moved", "was": str(src)}
+
+    dest_dir = Path(c["archive"]); dest_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y-%m-%d")
+    dest = dest_dir / f"{src.stem} [{c['done_marker']} {stamp}]{src.suffix}"
+    n = 1
+    while dest.exists():
+        n += 1
+        dest = dest_dir / f"{src.stem} [{c['done_marker']} {stamp} {n}]{src.suffix}"
+    src.rename(dest)
+
+    clips = Path(c["delivery"]) / src.stem
+    made = sorted(f.name for f in clips.glob("*.mp4")) if clips.is_dir() else []
+    st.setdefault("seen", {}).pop(src_path, None)
+    st["seen"][str(dest)] = {**meta, "archived": time.time()}
+    save(STATE, st)
+    return {"archived": dest.name, "moved_to": str(dest_dir),
+            "clips": made, "clips_in": str(clips)}
+
+
 def status():
     c, st = config(), load(STATE, {})
-    return {"intake": c["intake"], "work": c["work"],
+    return {"intake": c["intake"], "delivery": c["delivery"],
+            "archive": c["archive"], "work": c["work"],
             "already_handled": len(st.get("seen", {})),
             "tools": {t: bool(subprocess.run(["which", t], capture_output=True).returncode == 0)
                       for t in ("ffmpeg", "ffprobe", "whisper-cli")}}
 
 
 CMDS = {"ready": ready, "transcribe": transcribe, "transcript": transcript,
-        "index": index, "remember": remember, "cut": cut, "status": status}
+        "index": index, "remember": remember, "cut": cut, "archive": archive,
+        "status": status}
 
 if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in CMDS:
-        print(json.dumps({"error": "usage: plowcut {ready|transcribe|transcript|index|remember|cut|status}"}))
+        print(json.dumps({"error": "usage: plowcut {ready|transcribe|transcript|index|remember|cut|archive|status}"}))
         sys.exit(2)
     try:
         print(json.dumps(CMDS[sys.argv[1]](), indent=2))
