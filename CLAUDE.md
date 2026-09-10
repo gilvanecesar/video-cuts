@@ -10,6 +10,25 @@ Requisitos: repo público MIT · instalável pelo Agent Index · usar ferramenta
 open-source da Plow · integrar o client de tracking. Contexto completo do
 hackathon: `../BRIEFING.md`.
 
+## Definição de produto — corte é highlight POR ASSUNTO
+
+Definido pelo dono (09/09). Não é "os N trechos mais fortes" em ranking solto:
+é **segmentar a gravação em temas primeiro, e tirar o melhor momento de cada
+tema**. O título nasce do assunto, não da frase.
+
+Desdobramento a perseguir: indexando tema por gravação, o acervo acumula e o
+corte passa a atravessar episódios ("você já falou de preço 4 vezes; este é o
+melhor trecho"). É o que faz o valor **crescer** com o uso.
+
+O `plan.json` ganha o tema:
+
+```json
+{"source": "ep-42",
+ "clips": [{"topic": "pricing", "title": "...", "start": 412.0, "end": 468.5}]}
+```
+
+A máquina de corte não muda — recebe `{start, end, title}` e é agnóstica.
+
 ## Arquitetura
 
 O agente **pensa** num container; o trabalho **acontece** no Mac. Entre os dois
@@ -90,7 +109,7 @@ Funcionando: `ready` · `transcribe` (~27x tempo real, Metal/M4) · `cut`
 (1080x1920) · agente no ar respondendo no iMessage com a persona certa.
 
 Pendente:
-- **A skill que escolhe os ângulos e escreve o `plan.json`** — hoje o plano foi
+- **A skill que segmenta por tema e escolhe os momentos** — hoje o plano foi
   escrito à mão. É o coração do produto e ainda não existe.
 - Analytics e upload no YouTube via Latch (`plow_browser` + `fill_secret`;
   o `gog` é somente-leitura e não sobe vídeo).
