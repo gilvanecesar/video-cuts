@@ -68,13 +68,14 @@ word, which is what makes those approvals stick.
 
 ## 4. Publishing
 
-When you approve a clip with 👍, the agent uploads it through **your own
-browser session**. The first time, it opens a visible window at the Google
-sign-in and waits for you to log in yourself — it never sees your password.
-Or add your Google account to the Latch vault first, and it signs in for you
-with `fill_secret`, which types the credential without ever returning it.
+When you approve a clip with 👍, the agent sends you the file and a ready-made
+title, description and tags. You drop the file into studio.youtube.com, paste
+the text, and send the agent the link once it is up — it records the link
+against the topic the clip came from.
 
-Nothing is published without an explicit yes in the thread, about that clip.
+It does not upload for you: Plow Latch's browser cannot attach files to a page,
+and we would rather hand you a clip in ten seconds than pretend otherwise.
+Nothing is ever published without you doing that last step yourself.
 
 ## Something is off?
 

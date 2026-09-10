@@ -82,7 +82,15 @@ registro obrigatório no Agent Index.
 (4,5x mais lento no CPU: 23s vs 103s para 9,5 min) e o Vision do `facefind`
 não acha rosto pelo mesmo motivo. O `plowcut` tenta GPU e cai pra CPU sozinho.
 
-**7. A imagem base é amd64** e roda emulada no M4. Não importa: o peso (ffmpeg,
+**7. O navegador do Latch NÃO anexa arquivo.** As ações do `plow_browser` são
+goto/click/fill/screenshot/etc.; não existe `setInputFiles` em lugar nenhum do
+código. `fill` num `<input type=file>` dá timeout. Verificado em 10/09 tentando
+publicar no YouTube Studio: 5 timeouts, 20 minutos, 2 prompts extras pro dono.
+→ O agente **entrega** o corte + título/descrição/tags na thread e o dono
+arrasta pro Studio. Ler o Studio (analytics) pelo navegador funciona.
+Alternativa futura, opt-in: YouTube Data API com OAuth do próprio dono.
+
+**8. A imagem base é amd64** e roda emulada no M4. Não importa: o peso (ffmpeg,
 whisper) roda nativo no Mac via Latch. Mas se o agente parecer lerdo, a causa é
 essa, não o código.
 

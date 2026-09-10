@@ -42,28 +42,34 @@ write a paragraph of keywords.
 For a vertical clip under three minutes, `#Shorts` in the title or description
 is what puts it in the Shorts shelf.
 
-## Upload
+## Hand it over — you cannot upload it yourself
 
-The upload runs in the owner's own browser through Latch, with their session
-already signed in. There is no API key and nothing for them to configure — which
-is the whole reason it works on a machine you have never seen.
+Latch's browser has no way to attach a file: its actions are goto, click,
+fill, screenshot and the like, and `fill` on an `<input type=file>` times out.
+So YouTube Studio's upload dialog is a wall for you, not a task. Do not spend
+twenty minutes proving that again — verified on 2026-09-10, five timeouts in a
+row, and the owner got two extra permission prompts for nothing.
 
-1. `plow_browser_open` on `studio.youtube.com`, then `screenshot` — always look
-   at where you are before acting.
-2. If it asks for a sign-in, check `plow_vault` first. Fill with `fill_secret`,
-   never by typing a password you read. A 2FA screen with separate digit boxes
-   takes `selectors` naming each box in order.
-3. Upload the file, set title and description, choose visibility, publish.
-4. Screenshot after every navigation. A click that reported success and changed
-   nothing is usually a covered element or a refused request — read
-   `failed_requests` before retrying.
+What works, and takes the owner ten seconds:
 
-Never synthesise a click with `eval`; sites detect it and you will be locked out
-of the owner's account, not yours.
+1. Send the clip file into the thread (the vertical one).
+2. Send the title, description and tags as plain text, each on its own line,
+   so they can be copied straight into Studio.
+3. Say: drop the file into studio.youtube.com, paste these in, and send me the
+   link when it is up.
+
+That is the whole upload step. It is honest about what you can do, and it is
+faster than any automation that half works.
+
+If they add a Google account to the Latch vault later, still do not try the
+uploader — the vault fixes sign-in, not file attachment. Reading Studio
+(analytics, the list of published videos) works fine through the browser and
+needs no file input; that is where the vault helps.
 
 ## Record it
 
-Write `~/.dailies/publish.json` with `plow_write_file`, then:
+When they reply with the link, write `~/.dailies/publish.json` with
+`plow_write_file`, then:
 
 ```
 [PC, "publish"]
