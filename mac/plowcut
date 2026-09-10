@@ -892,8 +892,32 @@ def cut():
                 break
         if src:
             break
+    # Renamed or moved after transcription? The state remembers the exact path
+    # that was processed under this stem — fall back to it, and to the archive
+    # copy, before giving up. The cut only needs the original's frames; its
+    # current name does not matter.
     if not src:
-        return {"error": f"source recording not found for stem {plan['source']!r}"}
+        for path, meta in load(STATE, {}).get("seen", {}).items():
+            if Path(meta.get("work", "")).name == plan["source"] and Path(path).exists():
+                src = Path(path)
+                break
+    if not src:
+        # Last resort: the work dir has the audio we transcribed; a cut can be
+        # made straight from the recording if we can still see it anywhere by
+        # matching the stem loosely (accents/renames).
+        wn = norm(plan["source"])
+        for folder in (Path(c["intake"]), Path(c["archive"])):
+            if not folder.is_dir():
+                continue
+            cand = [f for f in folder.iterdir()
+                    if not f.name.startswith(".") and f.suffix.lower() in
+                    {".mp4", ".mov", ".m4v", ".mkv"}]
+            if len(cand) == 1:
+                src = cand[0]; break
+    if not src:
+        return {"error": f"source recording not found for stem {plan['source']!r}",
+                "hint": "the original may have been renamed or removed; drop it "
+                        "back in the intake folder to cut from it again"}
 
     outdir = Path(c["delivery"]) / src.stem
     outdir.mkdir(parents=True, exist_ok=True)
