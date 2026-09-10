@@ -53,7 +53,8 @@ def config():
     # this text.
     c.setdefault("language", "auto")
     c.setdefault("formats", ["vertical", "horizontal"])
-    c.setdefault("crop_x", 0.5)   # 0 = left, 0.5 = centre, 1 = right
+    c.setdefault("crop_x", "auto")  # "auto" = follow the face; or 0..1
+    c.setdefault("push_in", 0.09)   # slow zoom over the clip; 0 disables
     return c
 
 
@@ -88,6 +89,18 @@ def ready():
         return {"ready": None, "reason": "nothing settled yet"}
     return {"ready": candidate.name, "bytes": candidate.stat().st_size,
             "duration_s": probe_duration(candidate)}
+
+
+def probe_size(f):
+    try:
+        out = subprocess.run(
+            [probebin(), "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height", "-of", "csv=p=0", str(f)],
+            capture_output=True, text=True, timeout=60).stdout.strip()
+        w, h = out.split(",")[:2]
+        return int(w), int(h)
+    except Exception:
+        return None
 
 
 def probe_duration(f):
@@ -189,6 +202,50 @@ def to_s(stamp):
 # name -> (width, height, framing filter). Vertical is a centre crop, which is
 # right for one person facing the camera and wrong for two people side by side;
 # that is a known limit, not an oversight.
+def autoframe(src, start, end, samples=5):
+    """Where the 9:16 window should sit, from the faces actually in the shot.
+
+    Samples a few frames across the moment and takes the median face centre.
+    Median, not mean: one false positive on a poster or a reflection should not
+    drag the framing. Returns None when nothing is found, and the caller falls
+    back to centre — which is a guess, and says so."""
+    finder = HOME / "bin" / "facefind"
+    if not finder.exists():
+        return None
+    tmp = HOME / "work" / ".frames"
+    tmp.mkdir(parents=True, exist_ok=True)
+    shots = []
+    for k in range(samples):
+        t = start + (end - start) * (k + 0.5) / samples
+        f = tmp / f"f{k}.png"
+        try:
+            subprocess.run([ffbin(), "-nostdin", "-v", "error", "-y", "-ss", f"{t}",
+                            "-i", str(src), "-frames:v", "1", str(f)],
+                           check=True, capture_output=True, timeout=120)
+            shots.append(str(f))
+        except Exception:
+            pass
+    if not shots:
+        return None
+    try:
+        out = subprocess.run([str(finder), *shots], capture_output=True,
+                             text=True, timeout=120).stdout
+        results = json.loads(out)
+    except Exception:
+        return None
+    xs = []
+    for r in results:
+        if r.get("faces"):
+            biggest = max(r["faces"], key=lambda b: b["w"] * b["h"])
+            xs.append(biggest["x"])
+    for f in shots:
+        Path(f).unlink(missing_ok=True)
+    if not xs:
+        return None
+    xs.sort()
+    return xs[len(xs) // 2]
+
+
 def framing(fmt, x=0.5):
     """`x` is where the 9:16 window sits horizontally, 0 = left, 1 = right.
 
@@ -208,6 +265,8 @@ FORMATS = {
                                "pad=1920:1080:(ow-iw)/2:(oh-ih)/2"),
     "square":     (1080, 1080, "crop=ih:ih,scale=1080:1080"),
 }
+
+FPS = 30
 
 _FF = {}
 
@@ -275,6 +334,7 @@ ScaledBorderAndShadow: yes
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
 Style: D,Helvetica,{size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,{outline},0,2,{margin},{margin},{mv},1
+Style: K,Helvetica,{ksize},&H0000E5FF,&H0000E5FF,&H00000000,&H00000000,-1,0,0,0,100,100,2,0,1,{koutline},0,8,{margin},{margin},{kmv},1
 
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
@@ -286,7 +346,8 @@ def ass_t(t):
     return f"{int(h)}:{int(m):02d}:{int(sec):02d}.{int(round((sec % 1) * 100)):02d}"
 
 
-def caption_ass(ws, start, end, dest, w, h, per_line=3, hi="&H0000E5FF&"):
+def caption_ass(ws, start, end, dest, w, h, per_line=3, hi="&H0000E5FF&",
+                keywords=None):
     """Word-by-word captions: a few words on screen, the spoken one lit.
 
     We already have a timestamp per word — it is what places the hook — so the
@@ -301,17 +362,72 @@ def caption_ass(ws, start, end, dest, w, h, per_line=3, hi="&H0000E5FF&"):
         gend = inside[g + per_line][0] if g + per_line < len(inside) else end
         for i, (t, _) in enumerate(group):
             nxt = group[i + 1][0] if i + 1 < len(group) else gend
+            plain = " ".join(x for _, x in group)
             body = " ".join(
                 (f"{{\\c{hi}}}{x}{{\\c&H00FFFFFF&}}" if j == i else x)
                 for j, (_, x) in enumerate(group))
-            body = body.replace("{", "{").replace("}", "}")
+            # Same overflow as the keywords: WrapStyle 2 never wraps, it just
+            # runs off both edges. Shrink the line rather than break it — one
+            # line is what short-form reads.
+            fit = int((w * 0.88) / max(1, len(plain) * 0.47))
+            fs = max(int(h * 0.028), min(size, fit))
             lines.append(f"Dialogue: 0,{ass_t(t - start)},{ass_t(nxt - start)},"
-                         f"D,,0,0,0,,{body}")
+                         f"D,,0,0,0,,{{\\fs{fs}}}{body}")
             n += 1
+    ksize = int(h * 0.075)
+    for k in keywords or []:
+        at = float(k["at"])
+        if not (start <= at < end):
+            continue
+        text = str(k["text"])
+        a, b = at - start, min(at - start + 1.9, end - start)
+        # Long words overflow a fixed size and get sliced by the frame edge.
+        # Helvetica Bold caps run about 0.60 em wide; shrink to fit the margins.
+        fit = int((w * 0.86) / max(1, len(text) * 0.60))
+        size = max(int(h * 0.030), min(ksize, fit))
+        # pop: lands 18% oversized and settles; short fade at both ends.
+        fx = (r"{\fs" + str(size) + r"\fad(90,160)"
+              r"\t(0,130,\fscx118\fscy118)\t(130,260,\fscx100\fscy100)}")
+        lines.append(f"Dialogue: 1,{ass_t(a)},{ass_t(b)},K,,0,0,0,,{fx}{text}")
+        n += 1
+
     head = ASS_HEAD.format(w=w, h=h, size=size, outline=max(2, size // 14),
-                           margin=int(w * 0.10), mv=int(h * 0.13))
+                           ksize=int(h * 0.075), koutline=max(3, int(h * 0.075) // 12),
+                           margin=int(w * 0.10), mv=int(h * 0.13), kmv=int(h * 0.16))
     Path(dest).write_text(head + "\n".join(lines) + "\n", encoding="utf8")
     return n
+
+
+STOP = set("""a o e de da do das dos que em um uma uns umas na no nas nos por para
+com sem se ao aos as os eu voce vc ele ela nos eles elas meu minha seu sua isso
+isto esse essa este esta aquele aquela ja mais muito muita tambem so nao sim
+como quando onde porque pois mas entao ai la ca ta tao ser estar ter fazer
+foi era sao esta estao tem tinha vai vou pra pro né então""".split())
+
+
+def pick_keywords(ws, start, end, want=2, min_len=6):
+    """Words worth putting on screen, and exactly when they are said.
+
+    This is the effect that reads as a real edit rather than a caption: the word
+    lands on the frame at the instant it leaves the mouth. We can do it because
+    the transcript is already word-by-word — the same data that places the hook.
+    The agent may name these in the plan; this is the fallback."""
+    inside = [(t, x) for t, x in ws if start + 0.6 <= t < end - 1.2]
+    scored = []
+    for t, raw in inside:
+        w = "".join(c for c in raw if c.isalnum() or c in "-áéíóúâêôãõçÁÉÍÓÚÂÊÔÃÕÇ")
+        if len(w) < min_len or norm(w) in STOP:
+            continue
+        scored.append((len(w), t, w))
+    scored.sort(reverse=True)
+    picked, used = [], []
+    for _, t, w in scored:
+        if any(abs(t - u) < 4.0 for u in used):
+            continue
+        picked.append({"text": w.upper(), "at": t}); used.append(t)
+        if len(picked) >= want:
+            break
+    return sorted(picked, key=lambda k: k["at"])
 
 
 def norm(t):
@@ -382,15 +498,42 @@ def cut():
         slug = "".join(ch if ch.isalnum() else "-" for ch in clip.get("title", f"clip{i}")).strip("-").lower()[:60]
         note(f"cutting {i}/{len(plan['clips'])}: {clip.get('title','')} [{start:.0f}s-{end:.0f}s]")
 
+        crop_x = c["crop_x"]
+        if crop_x == "auto":
+            fx = autoframe(src, start, end)
+            if fx is None:
+                crop_x = 0.5
+                note("  no face found — framing centred, which may be wrong")
+            else:
+                # The 9:16 window is (h/w)*(9/16) of the source WIDTH — not 9/16,
+                # which is the aspect ratio, not a fraction of anything here.
+                size = probe_size(src) or (16, 9)
+                cw = min(1.0, (size[1] / size[0]) * (9 / 16))
+                span = max(1e-6, 1 - cw)
+                crop_x = min(1.0, max(0.0, (fx - cw / 2) / span))
+                note(f"  face at x={fx:.3f} → crop_x={crop_x:.3f}")
+        crop_x = float(crop_x)
+
         made_here = []
         for fmt in c["formats"]:
-            w, h, frame = framing(fmt, float(c["crop_x"]))
+            w, h, frame = framing(fmt, crop_x)
             dest = outdir / (f"{i:02d}-{slug}.mp4" if fmt == c["formats"][0]
                              else f"{i:02d}-{slug}-{fmt}.mp4")
             vf = frame
+            if c["push_in"]:
+                # A slow push toward the speaker. A locked-off talking head goes
+                # dead after ten seconds; a drift this small is not noticed, only
+                # felt. zoompan wants an fps and an output size or it guesses.
+                z = 1 + float(c["push_in"])
+                vf += (f",zoompan=z='min(1+{c['push_in']}*on/({FPS}*{max(0.1, end-start):.2f}),{z:.3f})'"
+                       f":d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+                       f":s={w}x{h}:fps={FPS}")
             if captions:
                 sub = outdir / f".{i:02d}-{fmt}.ass"
-                if caption_ass(ws, start, end, sub, w, h):
+                kws = clip.get("keywords")
+                if kws is None:
+                    kws = pick_keywords(ws, start, end)
+                if caption_ass(ws, start, end, sub, w, h, keywords=kws):
                     vf += f",ass={sub}"
             subprocess.run(
                 [ffbin(), "-nostdin", "-y", "-ss", f"{start}", "-to", f"{end}",
