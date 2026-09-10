@@ -1318,8 +1318,23 @@ def yt_upload():
 
     No browser, no file picker: the Data API takes the bytes directly. Lands
     private while the app is unverified — the owner flips it public, which is
-    also the last consent we want them to have."""
-    r = _yt("upload")
+    also the last consent we want them to have. The title is numbered #1, #2,
+    ... in publish order, so a channel of clips stays in sequence."""
+    plan_path = HOME / "publish-plan.json"
+    try:
+        plan = json.loads(plan_path.read_text())
+    except Exception:
+        return {"error": "no publish-plan.json", "expected": str(plan_path)}
+    # Next number = how many have gone up before, plus one. Stamped on the title
+    # unless the plan already carries a #N.
+    n = len(load(PUBLISHED, {})) + 1
+    title = str(plan.get("title", "")).rstrip()
+    import re as _re
+    if not _re.search(r"#\d+\s*$", title):
+        title = f"{title} #{n}"
+        plan["title"] = title
+        plan_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2))
+        r = _yt("upload")
     if r.get("uploaded"):
         # Record it the same way a manual publish would, tying the URL to the
         # topic the clip came from.

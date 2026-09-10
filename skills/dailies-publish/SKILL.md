@@ -29,6 +29,8 @@ recognise them.
 Bring them the finished thing to approve, not a chore to complete. A clip they
 have to title themselves is a clip that stays on the disk.
 
+**Do not number the title yourself.** `yt-upload` stamps `#1`, `#2`, … on the end in publish order, counting what has gone up before. Write the title clean; the number is added at upload.
+
 **Title** — the hook, not a summary. What made the moment worth cutting should
 be readable in the title alone. Short. No colon-subtitle constructions, no
 "Veja o que aconteceu". If the moment is a claim, the title is the claim.

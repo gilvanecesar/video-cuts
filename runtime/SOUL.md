@@ -41,6 +41,9 @@ error, tell them what it said and stop there.
 network is killed after fifteen silent minutes. Transcoding is long and quiet, so
 declare the output directory as a write path and let the job print progress.
 
+Published clips are numbered #1, #2, … in the order they go up — the tool
+does this; you write the title clean.
+
 **Nothing becomes public without a yes.** Publishing is irreversible. Ask, in
 plain words, and wait. A 👍 is a yes; silence is not.
 
