@@ -25,7 +25,8 @@ HOME = Path(os.environ.get("DAILIES_HOME", Path.home() / ".dailies"))
 CLIENT = Path(os.environ.get("YT_CLIENT", HOME / "youtube-client.json"))
 TOKEN = HOME / "youtube-token.json"
 PENDING = HOME / "youtube-device.json"
-SCOPE = "https://www.googleapis.com/auth/youtube.upload"
+SCOPE = ("https://www.googleapis.com/auth/youtube.upload "
+         "https://www.googleapis.com/auth/youtube.readonly")
 
 
 def _client():
@@ -138,11 +139,82 @@ def upload():
         return {"error": f"upload failed ({pr.status})",
                 "body": data[:300].decode("utf8", "replace")}
     vid = json.loads(data)["id"]
-    return {"uploaded": vid, "url": f"https://youtu.be/{vid}",
-            "privacy": meta["status"]["privacyStatus"]}
+    result = {"uploaded": vid, "url": f"https://youtu.be/{vid}",
+              "privacy": meta["status"]["privacyStatus"]}
+    # Custom thumbnail, if the plan named one. Needs a verified CHANNEL (the
+    # phone step), separate from app verification — so a failure here is not a
+    # failure of the upload: the video is up either way.
+    thumb = plan.get("thumbnail")
+    if thumb and Path(thumb).exists():
+        try:
+            tb = Path(thumb).read_bytes()
+            tc = http.client.HTTPSConnection("www.googleapis.com", timeout=120, context=ctx)
+            tc.request("POST",
+                       f"/upload/youtube/v3/thumbnails/set?videoId={vid}",
+                       tb, {"Authorization": "Bearer " + token,
+                            "Content-Type": "image/jpeg",
+                            "Content-Length": str(len(tb))})
+            tr = tc.getresponse(); tr.read()
+            result["thumbnail"] = ("set" if tr.status in (200, 201)
+                                   else f"skipped ({tr.status}; channel may not be verified)")
+        except Exception as e:
+            result["thumbnail"] = f"skipped ({str(e)[:60]})"
+    return result
 
 
-CMDS = {"connect": connect, "poll": poll, "upload": upload, "status": status}
+def _get(url, token):
+    import urllib.request
+    req = urllib.request.Request(url, headers={"Authorization": "Bearer " + token})
+    return json.load(urllib.request.urlopen(req, timeout=45))
+
+
+def stats():
+    """A read-only snapshot of the channel: totals, and the recent uploads with
+    their view counts. Needs the youtube.readonly scope — reconnect if this
+    says the token lacks it."""
+    if not TOKEN.exists():
+        return {"error": "not connected", "fix": "run: yt_upload.py connect"}
+    try:
+        token = _access_token()
+        ch = _get("https://www.googleapis.com/youtube/v3/channels"
+                  "?part=statistics,contentDetails,snippet&mine=true", token)
+    except Exception as e:
+        m = str(e)
+        if "403" in m or "insufficient" in m.lower():
+            return {"error": "token cannot read the channel",
+                    "fix": "reconnect for read access: yt_upload.py connect"}
+        return {"error": m[:200]}
+    if not ch.get("items"):
+        return {"error": "no channel on this account"}
+    c = ch["items"][0]
+    st = c["statistics"]
+    uploads = c["contentDetails"]["relatedPlaylists"]["uploads"]
+    pl = _get("https://www.googleapis.com/youtube/v3/playlistItems"
+              f"?part=snippet,contentDetails&playlistId={uploads}&maxResults=10", token)
+    ids = ",".join(x["contentDetails"]["videoId"] for x in pl.get("items", []))
+    views = {}
+    if ids:
+        vs = _get("https://www.googleapis.com/youtube/v3/videos"
+                  f"?part=statistics,status&id={ids}", token)
+        for v in vs.get("items", []):
+            views[v["id"]] = {"views": int(v["statistics"].get("viewCount", 0)),
+                              "likes": int(v["statistics"].get("likeCount", 0)),
+                              "comments": int(v["statistics"].get("commentCount", 0)),
+                              "privacy": v["status"]["privacyStatus"]}
+    recent = []
+    for x in pl.get("items", []):
+        vid = x["contentDetails"]["videoId"]
+        recent.append({"title": x["snippet"]["title"], "id": vid,
+                       "url": f"https://youtu.be/{vid}", **views.get(vid, {})})
+    recent.sort(key=lambda r: -(r.get("views") or 0))
+    return {"channel": c["snippet"]["title"],
+            "subscribers": int(st.get("subscriberCount", 0)),
+            "total_views": int(st.get("viewCount", 0)),
+            "video_count": int(st.get("videoCount", 0)),
+            "recent": recent}
+
+
+CMDS = {"connect": connect, "stats": stats, "poll": poll, "upload": upload, "status": status}
 if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in CMDS:
         print(json.dumps({"error": "usage: yt_upload.py {connect|poll|upload|status}"})); sys.exit(2)

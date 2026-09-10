@@ -22,6 +22,7 @@ in the arguments the agent sends.
     plowcut yt-poll     finish it after the owner approves
     plowcut yt-upload   upload ~/.dailies/publish-plan.json to YouTube
     plowcut yt-status   is YouTube connected?
+    plowcut yt-stats    subscribers, views, and recent clips with their numbers
     plowcut transcribe  transcribe the one that is waiting
     plowcut status      what plowcut knows
 
@@ -983,9 +984,24 @@ def cut():
             subprocess.run(cmd, check=True, capture_output=True)
             made_here.append({"format": fmt, "file": str(dest)})
 
+        # A thumbnail from the clip itself: a frame a third of the way in, where
+        # the speaker is settled and a keyword is usually on screen. Authentic,
+        # matches the content, and never looks AI-made.
+        thumb = outdir / f"{i:02d}-{slug}.jpg"
+        first = made_here[0]["file"] if made_here else None
+        if first:
+            at = max(1.0, (end - start) * 0.34)
+            try:
+                subprocess.run([ffbin(), "-nostdin", "-v", "error", "-y",
+                                "-ss", f"{at}", "-i", first, "-frames:v", "1",
+                                "-q:v", "2", str(thumb)],
+                               check=True, capture_output=True, timeout=120)
+            except Exception:
+                thumb = None
         made.append({"title": clip.get("title"), "topic": clip.get("topic"),
                      "kind": clip.get("kind"), "start": round(start, 1),
-                     "seconds": round(end - start, 1), "renders": made_here})
+                     "seconds": round(end - start, 1), "renders": made_here,
+                     "thumbnail": str(thumb) if thumb else None})
 
     learned = fold_topics(src.stem, plan["topics"]) if plan.get("topics") else None
     note("done")
@@ -1313,6 +1329,11 @@ def yt_status():
     return _yt("status")
 
 
+def yt_stats():
+    """A read-only snapshot of the owner's YouTube channel."""
+    return _yt("stats")
+
+
 def yt_upload():
     """Upload the clip named in ~/.dailies/publish-plan.json to YouTube.
 
@@ -1402,7 +1423,7 @@ def status():
 
 CMDS = {"fetch": fetch, "ready": ready, "transcribe": transcribe,
         "yt-connect": yt_connect, "yt-poll": yt_poll, "yt-status": yt_status,
-        "yt-upload": yt_upload,
+        "yt-upload": yt_upload, "yt-stats": yt_stats,
         "transcript": transcript,
         "index": index, "remember": remember, "search": search, "cut": cut, "archive": archive,
         "pending": pending, "publish": publish, "performance": performance,
@@ -1410,7 +1431,7 @@ CMDS = {"fetch": fetch, "ready": ready, "transcribe": transcribe,
 
 if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in CMDS:
-        print(json.dumps({"error": "usage: plowcut {fetch|ready|transcribe|transcript|index|remember|search|cut|archive|pending|publish|performance|yt-connect|yt-poll|yt-upload|yt-status|status}"}))
+        print(json.dumps({"error": "usage: plowcut {fetch|ready|transcribe|transcript|index|remember|search|cut|archive|pending|publish|performance|yt-connect|yt-poll|yt-upload|yt-status|yt-stats|status}"}))
         sys.exit(2)
     try:
         print(json.dumps(CMDS[sys.argv[1]](), indent=2))

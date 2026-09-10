@@ -89,6 +89,28 @@ If `yt-poll` times out, they have not finished approving; ask, then poll again.
 If `yt-upload` errors, say what it said and stop — do not fall back to the
 browser uploader, which cannot attach the file.
 
+## The channel, on demand
+
+When they ask how the channel is doing, how a clip performed, or what is working:
+
+```
+[PC, "yt-stats"]
+```
+
+Read-only. Returns subscribers, total views, and the recent uploads sorted by
+views — each with likes, comments and whether it is public or still private.
+
+Answer like someone who watched the numbers, not like a table. Lead with what
+changed or what stands out, name the real figures, and — this is the part no
+clipping tool can do — cross it with the topic index: if the clips that travel
+share a subject, say so. "Your family clips pull about twice the others" is the
+sentence worth sending.
+
+If `yt-stats` says the token cannot read the channel, they connected before the
+read scope existed: run `yt-connect` again and have them approve once more.
+
+Never invent a number. If a clip is too new to have views, say it has none yet.
+
 ## Record it
 
 Once it is up, `yt-upload` has already recorded it. Nothing more to do unless
@@ -96,6 +118,28 @@ the owner published a clip some other way — then use the manual `publish` path
 below.
 
 ## The old manual path (only if the API is not connected and they will not connect)
+
+## The channel, on demand
+
+When they ask how the channel is doing, how a clip performed, or what is working:
+
+```
+[PC, "yt-stats"]
+```
+
+Read-only. Returns subscribers, total views, and the recent uploads sorted by
+views — each with likes, comments and whether it is public or still private.
+
+Answer like someone who watched the numbers, not like a table. Lead with what
+changed or what stands out, name the real figures, and — this is the part no
+clipping tool can do — cross it with the topic index: if the clips that travel
+share a subject, say so. "Your family clips pull about twice the others" is the
+sentence worth sending.
+
+If `yt-stats` says the token cannot read the channel, they connected before the
+read scope existed: run `yt-connect` again and have them approve once more.
+
+Never invent a number. If a clip is too new to have views, say it has none yet.
 
 ## Record it
 
