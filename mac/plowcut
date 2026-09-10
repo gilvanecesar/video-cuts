@@ -284,9 +284,12 @@ def transcribe():
                                            "language": lang}
     save(STATE, st)
     note("done")
+    # The lines come back here so the normal flow needs no second call — and
+    # no second Latch prompt. `transcript` still exists for re-reading later.
     return {"transcribed": src.name, "language": lang,
             "transcript": str(work / "transcript.json"),
-            "duration_s": r.get("duration_s")}
+            "duration_s": r.get("duration_s"),
+            "lines": to_lines(words(work))}
 
 
 # --------------------------------------------------------------------------
@@ -980,8 +983,9 @@ def cut():
                      "kind": clip.get("kind"), "start": round(start, 1),
                      "seconds": round(end - start, 1), "renders": made_here})
 
+    learned = fold_topics(src.stem, plan["topics"]) if plan.get("topics") else None
     note("done")
-    return {"cut": len(made), "formats": c["formats"],
+    return {"cut": len(made), "formats": c["formats"], "index": learned,
             "captions": captions, "clips": made, "folder": str(outdir)}
 
 
@@ -1060,24 +1064,10 @@ def index():
     return load(INDEX, {"topics": {}})
 
 
-def remember():
-    """Fold ~/.dailies/learn.json into the index.
-
-    A file, not arguments — the agent writes it with plow_write_file and calls
-    `plowcut remember`, so the argv never changes.
-
-    learn.json: {"source": "<stem>",
-                 "topics": [{"topic": "pricing", "range": [380, 1120],
-                             "moments": [{"kind": "polemic", "title": "...",
-                                          "hook_at": 412.0, "start": 412.0,
-                                          "end": 456.0}]}]}
-    """
-    f = HOME / "learn.json"
-    if not f.exists():
-        return {"error": "no learn.json", "expected": str(f)}
-    incoming, idx = json.loads(f.read_text()), index()
-    src = incoming["source"]
-    for t in incoming.get("topics", []):
+def fold_topics(src, topics):
+    """Fold one recording's topics and moments into the owner's index."""
+    idx = index()
+    for t in topics or []:
         slot = idx["topics"].setdefault(t["topic"], {"occurrences": []})
         slot["occurrences"] = [o for o in slot["occurrences"] if o.get("source") != src]
         slot["occurrences"].append({"source": src, "range": t.get("range"),
@@ -1088,124 +1078,19 @@ def remember():
                                 if len({o["source"] for o in v["occurrences"]}) > 1)}
 
 
-def archive():
-    """Put the finished recording away and say where everything went.
+def remember():
+    """Fold ~/.dailies/learn.json into the index.
 
-    The intake folder is an inbox: a recording that has been cut should leave
-    it, marked, so that what remains is only what still needs work. Nothing is
-    deleted — the file moves and keeps its name plus a dated marker."""
-    c, st = config(), load(STATE, {})
-    seen = st.get("seen", {})
-    if not seen:
-        return {"error": "nothing has been transcribed yet"}
-    src_path, meta = max(seen.items(), key=lambda kv: kv[1]["at"])
-    src = Path(src_path)
-    if not src.exists():
-        return {"archived": None, "reason": "already moved", "was": str(src)}
-
-    dest_dir = Path(c["archive"]); dest_dir.mkdir(parents=True, exist_ok=True)
-    stamp = time.strftime("%Y-%m-%d")
-    dest = dest_dir / f"{src.stem} [{c['done_marker']} {stamp}]{src.suffix}"
-    n = 1
-    while dest.exists():
-        n += 1
-        dest = dest_dir / f"{src.stem} [{c['done_marker']} {stamp} {n}]{src.suffix}"
-    src.rename(dest)
-
-    clips = Path(c["delivery"]) / src.stem
-    made = sorted(f.name for f in clips.glob("*.mp4")) if clips.is_dir() else []
-    st.setdefault("seen", {}).pop(src_path, None)
-    st["seen"][str(dest)] = {**meta, "archived": time.time()}
-    save(STATE, st)
-    return {"archived": dest.name, "moved_to": str(dest_dir),
-            "clips": made, "clips_in": str(clips)}
-
-
-# --------------------------------------------------------------------------
-# publishing
-#
-# The upload itself is browser work: the agent drives YouTube Studio through
-# Latch with the owner's own session, so there is no OAuth app to register and
-# nothing for an installer to configure. plowcut's job is to say what is ready,
-# and to remember what went out.
-# --------------------------------------------------------------------------
-
-PUBLISHED = HOME / "published.json"
-
-
-def pending():
-    """Clips that exist on disk and have not been published yet."""
-    c = config()
-    done = load(PUBLISHED, {})
-    out = []
-    root = Path(c["delivery"])
-    if not root.is_dir():
-        return {"pending": [], "reason": f"no delivery folder at {root}"}
-    for folder in sorted(root.iterdir()):
-        if not folder.is_dir():
-            continue
-        for f in sorted(folder.glob("*.mp4")):
-            if str(f) in done:
-                continue
-            out.append({"file": str(f), "recording": folder.name,
-                        "format": "horizontal" if f.stem.endswith("-horizontal")
-                                  else "vertical",
-                        "seconds": probe_duration(f)})
-    return {"pending": out, "already_published": len(done)}
-
-
-def publish():
-    """Record what the agent just put online, from ~/.dailies/publish.json.
-
-    A file, not arguments — same reason as everywhere else. The agent writes
-    what it published and where, and this folds it into the owner's history so
-    that a later run can ask how it did.
-
-    publish.json: {"file": "...", "url": "...", "title": "...",
-                   "description": "...", "tags": [...], "platform": "youtube"}
+    Kept for the case where the agent wants to record what it found without
+    cutting anything. The normal flow does not need it: `plan.json` carries
+    `topics` and `cut` folds them in — one file and one prompt fewer for the
+    owner on first use.
     """
-    f = HOME / "publish.json"
+    f = HOME / "learn.json"
     if not f.exists():
-        return {"error": "no publish.json", "expected": str(f)}
-    rec = json.loads(f.read_text())
-    if not rec.get("file") or not rec.get("url"):
-        return {"error": "publish.json needs at least file and url"}
-    done = load(PUBLISHED, {})
-    done[rec["file"]] = {**rec, "at": time.time()}
-    save(PUBLISHED, done)
-
-    # Tie it back to the topic it came from, so performance can teach the next
-    # cut rather than being a number nobody reads.
-    idx, stem = index(), Path(rec["file"]).parent.name
-    for topic, v in idx.get("topics", {}).items():
-        for occ in v["occurrences"]:
-            if occ.get("source") == stem:
-                occ.setdefault("published", []).append(
-                    {"url": rec["url"], "title": rec.get("title"), "at": time.time()})
-    save(INDEX, idx)
-    return {"recorded": rec["url"], "title": rec.get("title"),
-            "total_published": len(done)}
-
-
-def performance():
-    """What has been published, and whatever view counts we have been told.
-
-    Counts arrive from the agent reading YouTube Studio through Latch; nothing
-    is estimated here. A clip with no reading reports none rather than a guess.
-    """
-    done = load(PUBLISHED, {})
-    rows = []
-    for f, r in sorted(done.items(), key=lambda kv: -kv[1].get("at", 0)):
-        rows.append({"title": r.get("title"), "url": r.get("url"),
-                     "published_at": time.strftime("%Y-%m-%d",
-                                                   time.localtime(r.get("at", 0))),
-                     "views": r.get("views"),
-                     "measured_at": r.get("views_at")})
-    known = [r for r in rows if r["views"] is not None]
-    return {"published": rows,
-            "with_view_data": len(known),
-            "note": None if known else
-            "no view counts recorded yet — do not guess at performance"}
+        return {"error": "no learn.json", "expected": str(f)}
+    incoming = json.loads(f.read_text())
+    return fold_topics(incoming["source"], incoming.get("topics", []))
 
 
 def search():

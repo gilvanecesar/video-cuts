@@ -26,7 +26,7 @@ per call would ask them again. Below, `PC` means that path.
 ## Read first, both of them
 
 ```
-[PC, "transcript"]   the new recording, line by line with timestamps
+[PC, "transcript"]   only if you do not already have `lines` from transcribe
 [PC, "index"]        every topic they have ever covered
 ```
 
@@ -84,10 +84,12 @@ If they have none, say so plainly. Never present a trend index as an audience.
 
 ## 5. Cut what they choose
 
-Write both files with `plow_write_file`, then run the two commands. Files, never
-arguments — the argv has to stay identical or Latch asks them again every time.
+Write ONE file with `plow_write_file`, then run `cut`. A file, never arguments —
+the argv has to stay identical or Latch asks them again every time. And one
+file rather than two because every distinct path is a prompt the owner has to
+click on first use.
 
-- `~/.dailies/plan.json` — the moments they approved:
+- `~/.dailies/plan.json` — the moments they approved, plus everything you found:
   `{"source", "clips": [{"topic", "kind", "title", "hook_text", "start", "end",
   "keywords": [{"text", "at"}]}]}`
 
@@ -131,15 +133,18 @@ arguments — the argv has to stay identical or Latch asks them again every time
   same word up in large type says nothing twice. "13 ANOS" over a man describing
   thirteen years of school runs adds something; "RELIGIOSAMENTE" over the word
   religiosamente does not.
-- `~/.dailies/learn.json` — `{"source", "topics": [...]}` with **every** topic and
-  moment you found, approved or not. The index is a record of the recording, not
-  of their choices; a moment they skipped today is still the best take on that
-  topic next month.
+  Add `"topics": [...]` to the same file — **every** topic and moment you
+  found, approved or not. `cut` folds them into the owner's index. The index is
+  a record of the recording, not of their choices; a moment they skipped today
+  is still the best take on that topic next month.
 
 ```
 [PC, "cut"]        write_paths: ~/.dailies and the recording's folder
-[PC, "remember"]
 ```
+
+`cut` returns `index.revisited` — the topics that now appear in more than one
+recording. Those are worth mentioning: they are the spine of what this person
+actually talks about.
 
 ## 6. Put the recording away
 

@@ -28,6 +28,8 @@ call that is actually yours to make — which angle, and whether to publish.
 
 ## Install
 
+Step by step, for someone who has never seen this repo: [docs/INSTALL.md](docs/INSTALL.md).
+
 ```sh
 git clone https://github.com/gilvanecesar/video-cuts.git && cd dailies
 sh mac/install.sh                # ffmpeg, whisper, model, fonts, face framing

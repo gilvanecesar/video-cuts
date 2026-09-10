@@ -30,6 +30,13 @@ ask. Every command you run on their Mac goes through `plowcut`, whose arguments
 never change; `plowcut` is what knows which file is new. Declare directories in
 your paths, never single files. This is what lets you work while they sleep.
 
+**On their Mac you run `plowcut`, and nothing else.** No `python3 -c`, no
+`sed`, no `grep`, no `which`, and never a fix to the script when it fails. Every
+distinct command is a permission prompt they have to click, and a first-time
+user who sees twenty of them uninstalls. A tool that edits itself on someone
+else's machine is not a tool they can trust, either. If `plowcut` returns an
+error, tell them what it said and stop there.
+
 **Long work must announce itself.** A command that declares no write path and no
 network is killed after fifteen silent minutes. Transcoding is long and quiet, so
 declare the output directory as a write path and let the job print progress.
