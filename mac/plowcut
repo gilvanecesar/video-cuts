@@ -291,6 +291,7 @@ FORMATS = {
 }
 
 FPS = 30
+ASSETS = HOME / "assets"      # the icon font libass renders by ligature
 
 _FF = {}
 
@@ -357,8 +358,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-Style: D,Helvetica,{size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,{outline},0,2,{margin},{margin},{mv},1
-Style: K,Helvetica,{ksize},&H0000E5FF,&H0000E5FF,&H00000000,&H00000000,-1,0,0,0,100,100,2,0,1,{koutline},0,8,{margin},{margin},{kmv},1
+{styles}
 
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
@@ -371,13 +371,13 @@ def ass_t(t):
 
 
 def caption_ass(ws, start, end, dest, w, h, per_line=3, hi="&H0000E5FF&",
-                keywords=None):
+                keywords=None, effects=None):
     """Word-by-word captions: a few words on screen, the spoken one lit.
 
     We already have a timestamp per word — it is what places the hook — so the
     caption everyone recognises from short-form costs us nothing extra."""
     inside = [(t, x) for t, x in ws if start <= t < end]
-    if not inside:
+    if not inside and not (keywords or effects):
         return 0
     size = int(h * 0.046)
     lines, n = [], 0
@@ -403,21 +403,27 @@ def caption_ass(ws, start, end, dest, w, h, per_line=3, hi="&H0000E5FF&",
         at = float(k["at"])
         if not (start <= at < end):
             continue
-        text = str(k["text"])
-        a, b = at - start, min(at - start + 1.9, end - start)
-        # Long words overflow a fixed size and get sliced by the frame edge.
-        # Helvetica Bold caps run about 0.60 em wide; shrink to fit the margins.
-        fit = int((w * 0.86) / max(1, len(text) * 0.60))
-        size = max(int(h * 0.030), min(ksize, fit))
-        # pop: lands 18% oversized and settles; short fade at both ends.
-        fx = (r"{\fs" + str(size) + r"\fad(90,160)"
-              r"\t(0,130,\fscx118\fscy118)\t(130,260,\fscx100\fscy100)}")
-        lines.append(f"Dialogue: 1,{ass_t(a)},{ass_t(b)},K,,0,0,0,,{fx}{text}")
-        n += 1
+        text = str(k.get("text", ""))
+        icon = k.get("icon")
+        a, b = at - start, min(at - start + float(k.get("hold", 1.9)), end - start)
+        y = int(h * 0.30 if icon else h * 0.16)
+        if icon:
+            gs = int(h * 0.135)
+            lines.append(f"Dialogue: 2,{ass_t(a)},{ass_t(b)},I,,0,0,0,,"
+                         f"{{{pop()}\\fs{gs}\\an5\\pos({int(w/2)},{y})}}{icon}")
+            y += int(gs * 0.66)
+            n += 1
+        if text:
+            # Long words overflow a fixed size and get sliced by the frame edge.
+            fit = int((w * 0.86) / max(1, len(text) * 0.60))
+            size = max(int(h * 0.030), min(ksize, fit))
+            lines.append(f"Dialogue: 2,{ass_t(a)},{ass_t(b)},K,,0,0,0,,"
+                         f"{{{pop(150)}\\fs{size}\\an8\\pos({int(w/2)},{y})}}{text}")
+            n += 1
 
-    head = ASS_HEAD.format(w=w, h=h, size=size, outline=max(2, size // 14),
-                           ksize=int(h * 0.075), koutline=max(3, int(h * 0.075) // 12),
-                           margin=int(w * 0.10), mv=int(h * 0.13), kmv=int(h * 0.16))
+    lines += fx_events(effects, start, end, w, h)
+    n += len(effects or [])
+    head = ASS_HEAD.format(w=w, h=h, styles=fx_styles(w, h))
     Path(dest).write_text(head + "\n".join(lines) + "\n", encoding="utf8")
     return n
 
@@ -452,6 +458,111 @@ def pick_keywords(ws, start, end, want=2, min_len=6):
         if len(picked) >= want:
             break
     return sorted(picked, key=lambda k: k["at"])
+
+
+# --------------------------------------------------------------------------
+# the graphic layer
+#
+# Icons, cards, lower thirds and captions are all text to libass, so the whole
+# overlay is one ASS file and one render pass. Icons come from a Material
+# Symbols font by ligature — the agent asks for "smartphone" and gets the
+# glyph — which is why there is no icon directory to manage and nothing to
+# rasterise. Only zoom lives in ffmpeg, because it moves the picture itself.
+# --------------------------------------------------------------------------
+
+ICON_FONT = "Material Symbols Rounded"
+YELLOW, WHITE, BLACK = "&H0000E5FF&", "&H00FFFFFF&", "&H00000000&"
+
+
+def fx_styles(w, h):
+    cap = int(h * 0.046)
+    return f"""Style: D,Helvetica,{cap},{WHITE[:-1]},{WHITE[:-1]},{BLACK[:-1]},{BLACK[:-1]},-1,0,0,0,100,100,0,0,1,{max(2, cap // 14)},0,2,{int(w*0.10)},{int(w*0.10)},{int(h*0.13)},1
+Style: K,Helvetica,{int(h*0.075)},{YELLOW[:-1]},{YELLOW[:-1]},{BLACK[:-1]},{BLACK[:-1]},-1,0,0,0,100,100,2,0,1,{max(3,int(h*0.075)//12)},0,8,{int(w*0.10)},{int(w*0.10)},{int(h*0.16)},1
+Style: I,{ICON_FONT},{int(h*0.11)},{YELLOW[:-1]},{YELLOW[:-1]},{BLACK[:-1]},{BLACK[:-1]},0,0,0,0,100,100,0,0,1,0,0,5,20,20,20,1
+Style: CT,Helvetica,{int(h*0.070)},{WHITE[:-1]},{WHITE[:-1]},{BLACK[:-1]},{BLACK[:-1]},-1,0,0,0,100,100,1,0,1,0,0,5,20,20,20,1
+Style: CS,Helvetica,{int(h*0.036)},{YELLOW[:-1]},{YELLOW[:-1]},{BLACK[:-1]},{BLACK[:-1]},0,0,0,0,100,100,0,0,1,0,0,5,20,20,20,1
+Style: BOX,Helvetica,20,&H00101418,&H00101418,&H00101418,&H00101418,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1"""
+
+
+def box(x, y, bw, bh):
+    """An ASS drawing rectangle — used for card backgrounds and bars."""
+    return (f"{{\\p1\\pos({x},{y})}}m 0 0 l {bw} 0 l {bw} {bh} l 0 {bh}{{\\p0}}")
+
+
+def pop(ms=130, over=118):
+    """Lands oversized and settles. The whole grammar of short-form motion."""
+    return (f"\\fad(90,150)\\t(0,{ms},\\fscx{over}\\fscy{over})"
+            f"\\t({ms},{ms*2},\\fscx100\\fscy100)")
+
+
+def fx_events(effects, start, end, w, h):
+    """Compile the agent's effect list into ASS dialogue lines."""
+    out = []
+    for e in effects or []:
+        kind = e.get("type")
+        a = float(e.get("at", e.get("from", 0))) - start
+        b = float(e.get("to", e.get("at", 0) + 2.0)) - start
+        if b <= 0 or a >= end - start:
+            continue
+        a, b = max(0.0, a), min(b, end - start)
+
+        if kind == "card":
+            title, sub = str(e.get("title", "")), str(e.get("sub", ""))
+            icon = e.get("icon")
+            tfs = max(int(h * 0.034),
+                      min(int(h * 0.068), int((w * 0.70) / max(1, len(title) * 0.56))))
+            sfs = int(tfs * 0.46)
+            gs = int(tfs * 1.25) if icon else 0
+            # Height follows the content instead of the content fighting a box.
+            bh = int(gs * 1.15 + tfs * 1.5 + (sfs * 1.7 if sub else 0) + h * 0.045)
+            bw = int(w * 0.84)
+            x, y = int((w - bw) / 2), int(h * 0.22)
+            cy = y + int(h * 0.022)
+            out.append(f"Dialogue: 1,{ass_t(a)},{ass_t(b)},BOX,,0,0,0,,"
+                       f"{{\\fad(120,180)\\alpha&H28&}}{box(x, y, bw, bh)}")
+            if icon:
+                out.append(f"Dialogue: 2,{ass_t(a)},{ass_t(b)},I,,0,0,0,,"
+                           f"{{{pop()}\\fs{gs}\\an8\\pos({int(w/2)},{cy})}}{icon}")
+                cy += int(gs * 1.05)
+            out.append(f"Dialogue: 2,{ass_t(a)},{ass_t(b)},CT,,0,0,0,,"
+                       f"{{{pop(150)}\\fs{tfs}\\an8\\pos({int(w/2)},{cy})}}{title}")
+            if sub:
+                out.append(f"Dialogue: 2,{ass_t(a)},{ass_t(b)},CS,,0,0,0,,"
+                           f"{{\\fad(220,180)\\fs{sfs}\\an8"
+                           f"\\pos({int(w/2)},{cy + int(tfs * 1.35)})}}{sub}")
+
+        elif kind == "lower_third":
+            text = str(e.get("text", ""))
+            fs = int(h * 0.030)
+            bh = int(fs * 2.1)
+            bw = min(int(w * 0.86), int(fs * 0.56 * len(text) + w * 0.09))
+            x, y = int(w * 0.07), int(h * 0.735)
+            out.append(f"Dialogue: 1,{ass_t(a)},{ass_t(b)},BOX,,0,0,0,,"
+                       f"{{\\fad(150,200)\\alpha&H33&\\clip({x},{y},{x},{y+bh})"
+                       f"\\t(0,280,\\clip({x},{y},{x+bw},{y+bh}))}}{box(x, y, bw, bh)}")
+            out.append(f"Dialogue: 2,{ass_t(a)},{ass_t(b)},CS,,0,0,0,,"
+                       f"{{\\fad(280,180)\\an4\\fs{fs}"
+                       f"\\pos({x+int(w*0.030)},{y+int(bh*0.52)})}}{text}")
+
+        elif kind == "flash":
+            out.append(f"Dialogue: 3,{ass_t(a)},{ass_t(min(a + 0.18, b))},BOX,,0,0,0,,"
+                       f"{{\\fad(0,140)\\alpha&H80&\\c&H00FFFFFF&}}{box(0, 0, w, h)}")
+    return out
+
+
+def zoom_expr(effects, dur, push_in, fps):
+    """One zoompan expression: a slow drift plus a decaying bump per punch.
+
+    A punch is a bump on the same curve rather than a cut, so the picture never
+    jumps — it lunges and settles, which is what the eye reads as emphasis."""
+    terms = [f"1+{push_in}*on/({fps}*{max(0.1, dur):.2f})"] if push_in else ["1"]
+    for e in effects or []:
+        if e.get("type") not in ("punch", "pull"):
+            continue
+        at = float(e.get("at", 0))
+        amt = float(e.get("amount", 0.10)) * (1 if e["type"] == "punch" else -1)
+        terms.append(f"{amt:+.3f}*exp(-pow((on/{fps}-{at:.2f})*2.2,2))")
+    return "".join(terms)
 
 
 def norm(t):
@@ -562,21 +673,34 @@ def cut():
             dest = outdir / (f"{i:02d}-{slug}.mp4" if fmt == c["formats"][0]
                              else f"{i:02d}-{slug}-{fmt}.mp4")
             vf = frame
-            if c["push_in"]:
+            fx = list(clip.get("effects") or [])
+            # "icon" used to be its own effect and is the same thing as a
+            # keyword that carries a glyph. Accept both spellings; keep one.
+            legacy = [e for e in fx if e.get("type") == "icon"]
+            fx = [e for e in fx if e.get("type") != "icon"]
+            if c["push_in"] or any(e.get("type") in ("punch", "pull") for e in fx):
                 # A slow push toward the speaker. A locked-off talking head goes
                 # dead after ten seconds; a drift this small is not noticed, only
                 # felt. zoompan wants an fps and an output size or it guesses.
-                z = 1 + float(c["push_in"])
-                vf += (f",zoompan=z='min(1+{c['push_in']}*on/({FPS}*{max(0.1, end-start):.2f}),{z:.3f})'"
+                expr = zoom_expr(fx, end - start, c["push_in"], FPS)
+                vf += (f",zoompan=z='max(1,min({expr},1.35))'"
                        f":d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
                        f":s={w}x{h}:fps={FPS}")
             if captions:
                 sub = outdir / f".{i:02d}-{fmt}.ass"
                 kws = clip.get("keywords")
+                if legacy:
+                    kws = (kws or []) + [{"text": e.get("text", ""),
+                                          "at": e.get("at"), "icon": e.get("name")}
+                                         for e in legacy]
                 if kws is None:
-                    kws = pick_keywords(ws, start, end)
-                if caption_ass(ws, start, end, sub, w, h, keywords=kws):
-                    vf += f",ass={sub}"
+                    # Only invent keywords when the agent named no graphics at
+                    # all; otherwise the two layers say the same thing twice.
+                    kws = [] if fx else pick_keywords(ws, start, end)
+                if caption_ass(ws, start, end, sub, w, h, keywords=kws,
+                               effects=[e for e in fx
+                                        if e.get("type") not in ("punch", "pull")]):
+                    vf += f",ass={sub}:fontsdir={ASSETS}"
             subprocess.run(
                 [ffbin(), "-nostdin", "-y", "-ss", f"{start}", "-to", f"{end}",
                  "-i", str(src), "-vf", vf,

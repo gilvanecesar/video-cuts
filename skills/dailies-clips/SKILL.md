@@ -91,6 +91,39 @@ arguments — the argv has to stay identical or Latch asks them again every time
   `{"source", "clips": [{"topic", "kind", "title", "hook_text", "start", "end",
   "keywords": [{"text", "at"}]}]}`
 
+  Each clip may also carry `effects` — the graphics you choose to put on it.
+  This is where a clip stops being a subtitled crop and starts being an edit,
+  so choose like an editor: a beat needs a reason, and four graphics in twenty
+  seconds is noise, not energy. Two or three per clip is usually right.
+
+  ```
+  "keywords": [{"text": "ZERO CELULAR", "at": 439.6, "icon": "smartphone"}]
+  "effects": [
+    {"type": "punch",       "at": 428.0, "amount": 0.11},
+    {"type": "pull",        "at": 450.0},
+    {"type": "card",        "from": 453.0, "to": 457.0,
+     "title": "SEM TELAS", "sub": "so o que a gente viveu", "icon": "child_care"},
+    {"type": "lower_third", "from": 425.0, "to": 429.0, "text": "Gilvane · pai"},
+    {"type": "flash",       "at": 441.0}
+  ]
+  ```
+
+  - **keyword** — a short line that lands on screen the instant it is spoken,
+    with an optional icon above it. Make it **condense**, never echo: the
+    caption already shows every word, so the same word in large type says
+    nothing twice. "13 ANOS" over a man describing thirteen years of school
+    runs adds something; "RELIGIOSAMENTE" over the word religiosamente does not.
+  - **punch / pull** — the camera lunges in, or opens out. Put a punch where the
+    sentence turns, not on a schedule.
+  - **card** — a titled panel. Use it to name a thing the speaker only implies.
+  - **lower_third** — who is talking, early and briefly.
+  - **flash** — one frame of white. Rare, or it is a strobe.
+
+  Icon names come from Material Symbols: plain English nouns and verbs —
+  `smartphone`, `school`, `sports_soccer`, `child_care`, `favorite`, `alarm`,
+  `attach_money`, `groups`, `home`, `trending_up`. If you are unsure a name
+  exists, leave the icon out; a missing glyph renders as a blank box on screen.
+
   `hook_text` is the sentence the clip must OPEN on, quoted from the transcript;
   `cut` finds that word in the audio and starts there. `keywords` are what lands
   on screen at the instant it is spoken — two per clip, at most. Make them
