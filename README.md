@@ -24,18 +24,26 @@ call that is actually yours to make — which angle, and whether to publish.
 
 - macOS with [Plow Latch](https://plow.co/download/latch) installed and paired
 - Docker
-- On the Mac: `ffmpeg` and `whisper-cli` (`brew install ffmpeg-full whisper-cpp`)
-- A Whisper model at `~/.dailies/models/ggml-small.bin`
+- Homebrew
 
 ## Install
 
 ```sh
 git clone https://github.com/<you>/dailies.git && cd dailies
-install -m 0755 mac/plowcut ~/.dailies/bin/plowcut
-mkdir -p ~/Movies/Dailies
+sh mac/install.sh                # ffmpeg, whisper, model, fonts, face framing
+```
 
+`install.sh` is idempotent — run it again and it does nothing. It touches
+nothing outside `~/.dailies` and `~/Movies/Dailies` except two Homebrew
+formulae, and `plowcut status` afterwards tells you what is missing and how to
+fix each thing.
+
+Then give the agent its phone line and start it:
+
+```sh
+git clone https://github.com/plow-pbc/plow-agents.git ../plow-agents
 export PATH="$PWD/../plow-agents/bin:$PATH"
-plow-agents login --new-line     # text the code it prints
+plow-agents login --new-line     # text the code it prints, from the phone you own
 plow-agents lines                # pick a free line
 plow-agents mint ln_xxx
 docker compose up --build -d
@@ -63,6 +71,21 @@ arguments — `ready`, `transcribe`, `cut`. That is deliberate. Latch keys your
 standing approval on the exact command line, so anything that varied would ask
 you again for every recording, forever. `plowcut` is what knows which file is
 new; the agent never names it.
+
+## What it does with a recording
+
+1. Notices it, once the file has stopped growing.
+2. Transcribes it on your Mac, word by word. Nothing is uploaded.
+3. Segments it into topics and finds the moments inside each that stand alone.
+4. Texts you the angles. You answer with one word.
+5. Cuts vertical and horizontal, framed on your face, opening on the strongest
+   line, with captions, icons and panels it chose.
+6. Asks before anything becomes public, then uploads through your own browser
+   session and remembers what went out.
+
+The topic index is the part a clipping tool cannot have. Those tools see one
+upload and forget it. This one knows your whole library — so when a recording
+returns to something you covered in March, it says so.
 
 ## What it will not do
 

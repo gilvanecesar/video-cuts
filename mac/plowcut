@@ -22,7 +22,7 @@ in the arguments the agent sends.
 Output is JSON on stdout. Progress goes to stderr so a long job is never
 silent (Latch kills a silent, write-less, network-less command at 15 minutes).
 """
-import json, math, os, re, subprocess, sys, time
+import json, math, os, re, shutil, subprocess, sys, time
 from pathlib import Path
 
 HOME = Path(os.environ.get("DAILIES_HOME", Path.home() / ".dailies"))
@@ -1110,12 +1110,46 @@ def performance():
 
 
 def status():
+    """What is here and what is missing, in the order it would break.
+
+    Written so the agent can tell the owner exactly what to do next instead of
+    reporting a failure and stopping: each missing piece names its own fix."""
     c, st = config(), load(STATE, {})
-    return {"intake": c["intake"], "delivery": c["delivery"],
-            "archive": c["archive"], "work": c["work"],
-            "already_handled": len(st.get("seen", {})),
-            "tools": {t: bool(subprocess.run(["which", t], capture_output=True).returncode == 0)
-                      for t in ("ffmpeg", "ffprobe", "whisper-cli")}}
+    ff = ffbin()
+    checks = []
+
+    def need(name, ok, why, fix):
+        checks.append({"name": name, "ok": bool(ok), "why": why,
+                       **({} if ok else {"fix": fix})})
+
+    need("ffmpeg", shutil.which(ff) or Path(ff).exists(),
+         "cutting and encoding", "brew install ffmpeg-full")
+    need("ffmpeg can draw text", can_caption(),
+         "captions, icons, panels — all of the graphics",
+         "brew install ffmpeg-full (the plain formula has no libass)")
+    need("whisper-cli", shutil.which("whisper-cli"),
+         "local transcription", "brew install whisper-cpp")
+    need("transcription model", Path(c["model"]).exists(),
+         "what every topic and hook is chosen from",
+         "curl -fL -o " + c["model"] + " https://huggingface.co/ggerganov/"
+         "whisper.cpp/resolve/main/ggml-small.bin")
+    need("icon font", (ASSETS / "icons.ttf").exists(),
+         "icons in cards and keywords",
+         "re-run mac/install.sh")
+    need("display fonts", (ASSETS / "Anton.ttf").exists(),
+         "typography — falls back to a system face",
+         "re-run mac/install.sh")
+    need("facefind", (HOME / "bin" / "facefind").exists(),
+         "framing the vertical crop on the speaker",
+         "swiftc -O -o ~/.dailies/bin/facefind mac/facefind.swift")
+    need("intake folder", Path(c["intake"]).is_dir(),
+         "where recordings are picked up", f"mkdir -p {c['intake']}")
+
+    missing = [k["name"] for k in checks if not k["ok"]]
+    return {"ready": not missing, "missing": missing, "checks": checks,
+            "intake": c["intake"], "delivery": c["delivery"],
+            "archive": c["archive"], "language": c["language"],
+            "already_handled": len(st.get("seen", {}))}
 
 
 CMDS = {"ready": ready, "transcribe": transcribe, "transcript": transcript,
