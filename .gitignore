@@ -1,2 +1,6 @@
 /plow-credentials
 .DS_Store
+
+# YouTube OAuth — per-owner, never commit
+youtube-client.json
+youtube-token.json

@@ -18,6 +18,10 @@ in the arguments the agent sends.
     plowcut pending     clips on disk that have not been published
     plowcut publish     record what went online, from ~/.dailies/publish.json
     plowcut performance what has been published, and any views we were told
+    plowcut yt-connect  start the YouTube device flow (returns a code to text)
+    plowcut yt-poll     finish it after the owner approves
+    plowcut yt-upload   upload ~/.dailies/publish-plan.json to YouTube
+    plowcut yt-status   is YouTube connected?
     plowcut transcribe  transcribe the one that is waiting
     plowcut status      what plowcut knows
 
@@ -1279,6 +1283,66 @@ def search():
             "searched": len(st.get("seen", {})), "hits": kept}
 
 
+def _yt(cmd):
+    """Delegate to yt_upload.py — the YouTube Data API side, kept separate so
+    plowcut stays import-free and the OAuth details live in one place."""
+    here = Path(__file__).resolve().parent
+    for cand in (here / "yt_upload.py", HOME / "bin" / "yt_upload.py"):
+        if cand.exists():
+            r = subprocess.run([sys.executable, str(cand), cmd],
+                               capture_output=True, text=True, timeout=1800)
+            try:
+                return json.loads(r.stdout or "{}")
+            except Exception:
+                return {"error": "yt_upload gave no JSON",
+                        "stderr": (r.stderr or "")[-300:]}
+    return {"error": "yt_upload.py not found next to plowcut"}
+
+
+def yt_connect():
+    """Start the YouTube device flow. Returns the code to text the owner."""
+    return _yt("connect")
+
+
+def yt_poll():
+    """After the owner approves, exchange for the stored token."""
+    return _yt("poll")
+
+
+def yt_status():
+    return _yt("status")
+
+
+def yt_upload():
+    """Upload the clip named in ~/.dailies/publish-plan.json to YouTube.
+
+    No browser, no file picker: the Data API takes the bytes directly. Lands
+    private while the app is unverified — the owner flips it public, which is
+    also the last consent we want them to have."""
+    r = _yt("upload")
+    if r.get("uploaded"):
+        # Record it the same way a manual publish would, tying the URL to the
+        # topic the clip came from.
+        try:
+            plan = json.loads((HOME / "publish-plan.json").read_text())
+            done = load(PUBLISHED, {})
+            done[plan["file"]] = {"url": r["url"], "title": plan.get("title"),
+                                  "description": plan.get("description"),
+                                  "tags": plan.get("tags", []), "platform": "youtube",
+                                  "privacy": r.get("privacy"), "at": time.time()}
+            save(PUBLISHED, done)
+            idx, stem = index(), Path(plan["file"]).parent.name
+            for _t, v in idx.get("topics", {}).items():
+                for occ in v["occurrences"]:
+                    if occ.get("source") == stem:
+                        occ.setdefault("published", []).append(
+                            {"url": r["url"], "title": plan.get("title"), "at": time.time()})
+            save(INDEX, idx)
+        except Exception:
+            pass
+    return r
+
+
 def status():
     """What is here and what is missing, in the order it would break.
 
@@ -1322,6 +1386,8 @@ def status():
 
 
 CMDS = {"fetch": fetch, "ready": ready, "transcribe": transcribe,
+        "yt-connect": yt_connect, "yt-poll": yt_poll, "yt-status": yt_status,
+        "yt-upload": yt_upload,
         "transcript": transcript,
         "index": index, "remember": remember, "search": search, "cut": cut, "archive": archive,
         "pending": pending, "publish": publish, "performance": performance,
@@ -1329,7 +1395,7 @@ CMDS = {"fetch": fetch, "ready": ready, "transcribe": transcribe,
 
 if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in CMDS:
-        print(json.dumps({"error": "usage: plowcut {fetch|ready|transcribe|transcript|index|remember|search|cut|archive|pending|publish|performance|status}"}))
+        print(json.dumps({"error": "usage: plowcut {fetch|ready|transcribe|transcript|index|remember|search|cut|archive|pending|publish|performance|yt-connect|yt-poll|yt-upload|yt-status|status}"}))
         sys.exit(2)
     try:
         print(json.dumps(CMDS[sys.argv[1]](), indent=2))

@@ -23,8 +23,8 @@ RUN mkdir -p /opt/dailies/assets && cd /opt/dailies/assets \
 
 # The same pipeline both sides. On a Mac it drives whisper.cpp and the owner's
 # own ffmpeg through Latch; here it runs in place.
-COPY mac/plowcut /opt/dailies/bin/plowcut
-RUN chmod 0755 /opt/dailies/bin/plowcut
+COPY mac/plowcut mac/yt_upload.py /opt/dailies/bin/
+RUN chmod 0755 /opt/dailies/bin/plowcut /opt/dailies/bin/yt_upload.py
 
 # The usage reporter, fetched at build from the commit vendor/client.pin names
 # and checked against the hash beside it. Fetched rather than committed because

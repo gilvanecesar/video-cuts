@@ -1,2 +1,6 @@
 /plow-credentials
 .git
+youtube-client.json
+youtube-token.json
+youtube-device.json
+publish-plan.json

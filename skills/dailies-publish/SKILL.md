@@ -42,75 +42,58 @@ write a paragraph of keywords.
 For a vertical clip under three minutes, `#Shorts` in the title or description
 is what puts it in the Shorts shelf.
 
-## Upload — you do this alone
+## Connect YouTube once (device flow)
 
-Latch's browser cannot attach a file to a page: `fill` on an `<input
-type=file>` times out, always. What it *can* do is click "Select files", which
-opens the Mac's own file picker — and the picker is a system dialog, which is
-exactly what `plow_run_applescript` with **System Events** is for. So the upload
-is three tools in a row, and none of them needs the owner at the keyboard.
+Publishing goes through the YouTube Data API, not a browser — Latch's browser
+cannot attach a file, and this is what actually uploads. The owner authorises
+their own channel one time, from their phone:
 
-Verified on 2026-09-10: five `fill` timeouts trying it the wrong way, and a
-20-minute loop the owner had to watch. Do not repeat that.
+```
+[PC, "yt-status"]     already connected? -> {"connected": true}
+```
 
-1. **Stage the path.** Write the clip's full path — exactly as `pending`
-   printed it — as a single line to `~/.dailies/upload.txt` with
-   `plow_write_file`. The AppleScript reads the path from this file so that
-   the script itself never changes: Latch keys its standing approval on the
-   whole script text, and a script with a path baked in would ask the owner
-   again for every clip.
+If not connected:
 
-2. **Open a visible browser** (`plow_browser_open` with the headed option) on
-   `studio.youtube.com`. Headless has no window for a picker to appear in. If
-   it lands on Google sign-in, use the vault with `fill_secret`; with no vault
-   item, tell the owner the window is open and wait for them to sign in once.
+1. `[PC, "yt-connect"]` returns a line like *"Go to google.com/device and
+   enter GPX-GLB-LZLH"*. Send that to the owner exactly.
+2. Tell them: they will see a "Video Cuts isn't verified" screen — that is
+   expected for a new app; **Advanced → continue → allow**. It is their own
+   channel they are granting to.
+3. When they say done, `[PC, "yt-poll"]`. On `{"connected": true}` you are set
+   for every future upload — the token is stored, no browser ever again.
 
-3. **Click "Create → Upload videos" and then "Select files"** in the upload
-   dialog. Screenshot first, then click by selector or coordinates. The Mac
-   file picker opens over the browser window.
+If `yt-poll` times out, they have not finished approving; ask, then poll again.
 
-4. **Drive the picker** with `plow_run_applescript`, `app: "System Events"`,
-   and this script — verbatim, character for character, every time:
+## Upload — no browser, no file picker
 
-   ```applescript
-   set p to POSIX path of (path to home folder) & ".dailies/upload.txt"
-   set thePath to read POSIX file p as «class utf8»
-   if thePath ends with linefeed then set thePath to text 1 thru -2 of thePath
-   tell application "System Events"
-     delay 0.5
-     keystroke "g" using {command down, shift down}
-     delay 0.7
-     keystroke thePath
-     delay 0.5
-     keystroke return
-     delay 0.9
-     keystroke return
-   end tell
+1. Compose the title, description and tags (rules below) and get the owner's 👍
+   on them. **Never upload without that yes.**
+2. Write `~/.dailies/publish-plan.json` with `plow_write_file`:
+
+   ```json
+   {"file": "<clip path from pending>", "title": "...",
+    "description": "...", "tags": ["..."], "privacy": "private"}
    ```
 
-   ⌘⇧G opens "Go to folder", the path selects the file, the second Return
-   confirms. Studio starts uploading immediately.
+   Keep `privacy` as `private`: while the app is unverified the API requires it,
+   and it means the owner sees the clip on their channel before the world does.
 
-5. **Fill the details.** Title and description are ordinary text boxes; use
-   `forms` to find them and `fill` to set them. Choose "No, it's not made for
-   kids" if asked. Screenshot after each step — a click that reported success
-   and changed nothing is usually a covered element.
+3. `[PC, "yt-upload"]` — returns `{"url": "https://youtu.be/..."}`. It also
+   records the publish against the clip's topic, so `performance` and the index
+   know about it. Send the owner the link and tell them it is up as **private**;
+   they make it public in one tap, or ask you to (flipping visibility is only a
+   click, which the browser can do).
 
-6. **Ask.** Show the owner the title and description and wait for 👍. Not
-   before this point, and not without it.
+If `yt-upload` errors, say what it said and stop — do not fall back to the
+browser uploader, which cannot attach the file.
 
-7. **Publish.** Next through the steps to Visibility, choose Public, click
-   Publish. Take the URL from the confirmation dialog.
+## Record it
 
-If the AppleScript comes back with an error mentioning accessibility or
-"not allowed to send keystrokes", the Mac has not granted Accessibility to
-Plow Latch: tell the owner to turn it on in System Settings → Privacy &
-Security → Accessibility, then retry the picker step only.
+Once it is up, `yt-upload` has already recorded it. Nothing more to do unless
+the owner published a clip some other way — then use the manual `publish` path
+below.
 
-If any step fails twice, stop. Send the clip file into the thread with the
-title, description and tags as text, say what failed, and ask them to drop it
-into Studio and send you the link. Ten seconds of their time beats a third
-attempt.
+## The old manual path (only if the API is not connected and they will not connect)
 
 ## Record it
 
