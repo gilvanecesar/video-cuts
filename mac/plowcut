@@ -13,6 +13,9 @@ in the arguments the agent sends.
     plowcut remember    fold ~/.dailies/learn.json into that index
     plowcut cut         cut the clips named in ~/.dailies/plan.json
     plowcut archive     put the finished recording away, marked and dated
+    plowcut pending     clips on disk that have not been published
+    plowcut publish     record what went online, from ~/.dailies/publish.json
+    plowcut performance what has been published, and any views we were told
     plowcut transcribe  transcribe the one that is waiting
     plowcut status      what plowcut knows
 
@@ -1019,6 +1022,93 @@ def archive():
             "clips": made, "clips_in": str(clips)}
 
 
+# --------------------------------------------------------------------------
+# publishing
+#
+# The upload itself is browser work: the agent drives YouTube Studio through
+# Latch with the owner's own session, so there is no OAuth app to register and
+# nothing for an installer to configure. plowcut's job is to say what is ready,
+# and to remember what went out.
+# --------------------------------------------------------------------------
+
+PUBLISHED = HOME / "published.json"
+
+
+def pending():
+    """Clips that exist on disk and have not been published yet."""
+    c = config()
+    done = load(PUBLISHED, {})
+    out = []
+    root = Path(c["delivery"])
+    if not root.is_dir():
+        return {"pending": [], "reason": f"no delivery folder at {root}"}
+    for folder in sorted(root.iterdir()):
+        if not folder.is_dir():
+            continue
+        for f in sorted(folder.glob("*.mp4")):
+            if str(f) in done:
+                continue
+            out.append({"file": str(f), "recording": folder.name,
+                        "format": "horizontal" if f.stem.endswith("-horizontal")
+                                  else "vertical",
+                        "seconds": probe_duration(f)})
+    return {"pending": out, "already_published": len(done)}
+
+
+def publish():
+    """Record what the agent just put online, from ~/.dailies/publish.json.
+
+    A file, not arguments — same reason as everywhere else. The agent writes
+    what it published and where, and this folds it into the owner's history so
+    that a later run can ask how it did.
+
+    publish.json: {"file": "...", "url": "...", "title": "...",
+                   "description": "...", "tags": [...], "platform": "youtube"}
+    """
+    f = HOME / "publish.json"
+    if not f.exists():
+        return {"error": "no publish.json", "expected": str(f)}
+    rec = json.loads(f.read_text())
+    if not rec.get("file") or not rec.get("url"):
+        return {"error": "publish.json needs at least file and url"}
+    done = load(PUBLISHED, {})
+    done[rec["file"]] = {**rec, "at": time.time()}
+    save(PUBLISHED, done)
+
+    # Tie it back to the topic it came from, so performance can teach the next
+    # cut rather than being a number nobody reads.
+    idx, stem = index(), Path(rec["file"]).parent.name
+    for topic, v in idx.get("topics", {}).items():
+        for occ in v["occurrences"]:
+            if occ.get("source") == stem:
+                occ.setdefault("published", []).append(
+                    {"url": rec["url"], "title": rec.get("title"), "at": time.time()})
+    save(INDEX, idx)
+    return {"recorded": rec["url"], "title": rec.get("title"),
+            "total_published": len(done)}
+
+
+def performance():
+    """What has been published, and whatever view counts we have been told.
+
+    Counts arrive from the agent reading YouTube Studio through Latch; nothing
+    is estimated here. A clip with no reading reports none rather than a guess.
+    """
+    done = load(PUBLISHED, {})
+    rows = []
+    for f, r in sorted(done.items(), key=lambda kv: -kv[1].get("at", 0)):
+        rows.append({"title": r.get("title"), "url": r.get("url"),
+                     "published_at": time.strftime("%Y-%m-%d",
+                                                   time.localtime(r.get("at", 0))),
+                     "views": r.get("views"),
+                     "measured_at": r.get("views_at")})
+    known = [r for r in rows if r["views"] is not None]
+    return {"published": rows,
+            "with_view_data": len(known),
+            "note": None if known else
+            "no view counts recorded yet — do not guess at performance"}
+
+
 def status():
     c, st = config(), load(STATE, {})
     return {"intake": c["intake"], "delivery": c["delivery"],
@@ -1030,11 +1120,12 @@ def status():
 
 CMDS = {"ready": ready, "transcribe": transcribe, "transcript": transcript,
         "index": index, "remember": remember, "cut": cut, "archive": archive,
+        "pending": pending, "publish": publish, "performance": performance,
         "status": status}
 
 if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in CMDS:
-        print(json.dumps({"error": "usage: plowcut {ready|transcribe|transcript|index|remember|cut|archive|status}"}))
+        print(json.dumps({"error": "usage: plowcut {ready|transcribe|transcript|index|remember|cut|archive|pending|publish|performance|status}"}))
         sys.exit(2)
     try:
         print(json.dumps(CMDS[sys.argv[1]](), indent=2))
