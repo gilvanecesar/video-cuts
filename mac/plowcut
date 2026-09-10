@@ -11,6 +11,7 @@ in the arguments the agent sends.
     plowcut ready       is there a finished recording waiting?
     plowcut transcript  the newest transcript, compacted for reading
     plowcut index       every topic this owner has covered, across recordings
+    plowcut search      where they said something, from ~/.dailies/query.json
     plowcut remember    fold ~/.dailies/learn.json into that index
     plowcut cut         cut the clips named in ~/.dailies/plan.json
     plowcut archive     put the finished recording away, marked and dated
@@ -1207,6 +1208,72 @@ def performance():
             "no view counts recorded yet — do not guess at performance"}
 
 
+def search():
+    """Find where the owner said something, across everything ever transcribed.
+
+    The index knows topics; this knows words. A question like "where did I talk
+    about my kids" is answered from the transcripts themselves, so it works on
+    things that were never cut and on phrasing no topic name would carry.
+
+    query.json: {"q": "filhos", "limit": 6}
+    """
+    f = HOME / "query.json"
+    if not f.exists():
+        return {"error": "no query.json", "expected": str(f)}
+    spec = json.loads(f.read_text())
+    q = norm(str(spec.get("q", "")))
+    if not q:
+        return {"error": "query.json needs a q"}
+    terms = [t for t in q.split() if len(t) > 2]
+    limit = int(spec.get("limit", 6))
+
+    st, hits = load(STATE, {}), []
+    for src, meta in st.get("seen", {}).items():
+        work = Path(meta.get("work", ""))
+        if not (work / "transcript.json").exists():
+            continue
+        ws = words(work)
+        if not ws:
+            continue
+        # Score a rolling window so a passage that circles the subject beats a
+        # single stray mention of it.
+        span, stem = 24, Path(src).stem
+        for i in range(0, len(ws), 6):
+            chunk = ws[i:i + span]
+            text = " ".join(w for _, w in chunk)
+            flat = norm(text)
+            score = sum(flat.count(t) for t in terms)
+            if not score:
+                continue
+            hits.append({"source": stem, "at": chunk[0][0], "score": score,
+                         "text": text.strip()})
+    if not hits:
+        return {"q": spec.get("q"), "found": 0,
+                "searched": len(st.get("seen", {})),
+                "note": "nothing on that — say so rather than reaching"}
+
+    # Keep the best window per neighbourhood, not every overlapping one.
+    hits.sort(key=lambda h: (-h["score"], h["at"]))
+    kept = []
+    for h in hits:
+        if any(k["source"] == h["source"] and abs(k["at"] - h["at"]) < 45
+               for k in kept):
+            continue
+        kept.append(h)
+        if len(kept) >= limit:
+            break
+
+    # Say which of these already became something, so the agent can offer the
+    # clip instead of offering to make one that exists.
+    pub = load(PUBLISHED, {})
+    for h in kept:
+        h["published"] = [
+            {"title": r.get("title"), "url": r.get("url")}
+            for fpath, r in pub.items() if Path(fpath).parent.name == h["source"]]
+    return {"q": spec.get("q"), "found": len(kept),
+            "searched": len(st.get("seen", {})), "hits": kept}
+
+
 def status():
     """What is here and what is missing, in the order it would break.
 
@@ -1251,13 +1318,13 @@ def status():
 
 CMDS = {"fetch": fetch, "ready": ready, "transcribe": transcribe,
         "transcript": transcript,
-        "index": index, "remember": remember, "cut": cut, "archive": archive,
+        "index": index, "remember": remember, "search": search, "cut": cut, "archive": archive,
         "pending": pending, "publish": publish, "performance": performance,
         "status": status}
 
 if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in CMDS:
-        print(json.dumps({"error": "usage: plowcut {fetch|ready|transcribe|transcript|index|remember|cut|archive|pending|publish|performance|status}"}))
+        print(json.dumps({"error": "usage: plowcut {fetch|ready|transcribe|transcript|index|remember|search|cut|archive|pending|publish|performance|status}"}))
         sys.exit(2)
     try:
         print(json.dumps(CMDS[sys.argv[1]](), indent=2))
