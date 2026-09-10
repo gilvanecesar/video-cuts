@@ -42,29 +42,75 @@ write a paragraph of keywords.
 For a vertical clip under three minutes, `#Shorts` in the title or description
 is what puts it in the Shorts shelf.
 
-## Hand it over — you cannot upload it yourself
+## Upload — you do this alone
 
-Latch's browser has no way to attach a file: its actions are goto, click,
-fill, screenshot and the like, and `fill` on an `<input type=file>` times out.
-So YouTube Studio's upload dialog is a wall for you, not a task. Do not spend
-twenty minutes proving that again — verified on 2026-09-10, five timeouts in a
-row, and the owner got two extra permission prompts for nothing.
+Latch's browser cannot attach a file to a page: `fill` on an `<input
+type=file>` times out, always. What it *can* do is click "Select files", which
+opens the Mac's own file picker — and the picker is a system dialog, which is
+exactly what `plow_run_applescript` with **System Events** is for. So the upload
+is three tools in a row, and none of them needs the owner at the keyboard.
 
-What works, and takes the owner ten seconds:
+Verified on 2026-09-10: five `fill` timeouts trying it the wrong way, and a
+20-minute loop the owner had to watch. Do not repeat that.
 
-1. Send the clip file into the thread (the vertical one).
-2. Send the title, description and tags as plain text, each on its own line,
-   so they can be copied straight into Studio.
-3. Say: drop the file into studio.youtube.com, paste these in, and send me the
-   link when it is up.
+1. **Stage the path.** Write the clip's full path — exactly as `pending`
+   printed it — as a single line to `~/.dailies/upload.txt` with
+   `plow_write_file`. The AppleScript reads the path from this file so that
+   the script itself never changes: Latch keys its standing approval on the
+   whole script text, and a script with a path baked in would ask the owner
+   again for every clip.
 
-That is the whole upload step. It is honest about what you can do, and it is
-faster than any automation that half works.
+2. **Open a visible browser** (`plow_browser_open` with the headed option) on
+   `studio.youtube.com`. Headless has no window for a picker to appear in. If
+   it lands on Google sign-in, use the vault with `fill_secret`; with no vault
+   item, tell the owner the window is open and wait for them to sign in once.
 
-If they add a Google account to the Latch vault later, still do not try the
-uploader — the vault fixes sign-in, not file attachment. Reading Studio
-(analytics, the list of published videos) works fine through the browser and
-needs no file input; that is where the vault helps.
+3. **Click "Create → Upload videos" and then "Select files"** in the upload
+   dialog. Screenshot first, then click by selector or coordinates. The Mac
+   file picker opens over the browser window.
+
+4. **Drive the picker** with `plow_run_applescript`, `app: "System Events"`,
+   and this script — verbatim, character for character, every time:
+
+   ```applescript
+   set p to POSIX path of (path to home folder) & ".dailies/upload.txt"
+   set thePath to read POSIX file p as «class utf8»
+   if thePath ends with linefeed then set thePath to text 1 thru -2 of thePath
+   tell application "System Events"
+     delay 0.5
+     keystroke "g" using {command down, shift down}
+     delay 0.7
+     keystroke thePath
+     delay 0.5
+     keystroke return
+     delay 0.9
+     keystroke return
+   end tell
+   ```
+
+   ⌘⇧G opens "Go to folder", the path selects the file, the second Return
+   confirms. Studio starts uploading immediately.
+
+5. **Fill the details.** Title and description are ordinary text boxes; use
+   `forms` to find them and `fill` to set them. Choose "No, it's not made for
+   kids" if asked. Screenshot after each step — a click that reported success
+   and changed nothing is usually a covered element.
+
+6. **Ask.** Show the owner the title and description and wait for 👍. Not
+   before this point, and not without it.
+
+7. **Publish.** Next through the steps to Visibility, choose Public, click
+   Publish. Take the URL from the confirmation dialog.
+
+If the AppleScript comes back with an error mentioning accessibility or
+"not allowed to send keystrokes", the Mac has not granted Accessibility to
+Plow Latch: tell the owner to turn it on in System Settings → Privacy &
+Security → Accessibility, then retry the picker step only.
+
+If any step fails twice, stop. Send the clip file into the thread with the
+title, description and tags as text, say what failed, and ask them to drop it
+into Studio and send you the link. Ten seconds of their time beats a third
+attempt.
 
 ## Record it
 
