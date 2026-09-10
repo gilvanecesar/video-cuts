@@ -29,7 +29,7 @@ call that is actually yours to make — which angle, and whether to publish.
 ## Install
 
 ```sh
-git clone https://github.com/<you>/dailies.git && cd dailies
+git clone https://github.com/gilvanecesar/dailies.git && cd dailies
 sh mac/install.sh                # ffmpeg, whisper, model, fonts, face framing
 ```
 

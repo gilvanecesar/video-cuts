@@ -1,7 +1,7 @@
 #!/bin/sh
 # Dailies — everything the Mac side needs, in one command.
 #
-#   curl -fsSL https://raw.githubusercontent.com/OWNER/dailies/main/mac/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/gilvanecesar/dailies/main/mac/install.sh | sh
 #
 # Idempotent: run it twice and it does nothing the second time. It never
 # touches anything outside ~/.dailies and ~/Movies/Dailies except for two
@@ -10,7 +10,7 @@ set -e
 
 HOME_DIR="${DAILIES_HOME:-$HOME/.dailies}"
 INTAKE="${DAILIES_INTAKE:-$HOME/Movies/Dailies}"
-RAW="https://raw.githubusercontent.com/OWNER/dailies/main"
+RAW="https://raw.githubusercontent.com/gilvanecesar/dailies/main"
 say() { printf '\033[1m%s\033[0m\n' "$*"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
