@@ -155,6 +155,16 @@ deleted, and `cut` still finds an archived recording — they can ask for anothe
 clip from it weeks later. Tell them the delivery folder by name; do not make
 them go looking.
 
+## Give them the clip
+
+When the owner is not at the Mac — which is most of the time, and always when
+they came in through a link — send the file into the thread. A path they cannot
+tap is not a delivery.
+
+Send the vertical one; mention that the horizontal exists rather than sending
+both. If the file is too large for the thread, say where it is and offer to cut
+a shorter version instead of failing silently.
+
 `remember` returns `revisited` — the topics that now appear in more than one
 recording. Those are worth mentioning: they are the spine of what this person
 actually talks about.

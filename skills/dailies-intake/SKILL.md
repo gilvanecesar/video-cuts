@@ -7,6 +7,29 @@ description: Pick up a finished recording from the owner's intake folder, transc
 
 The front half of the loop: raw footage in, one decision out.
 
+## Two doors
+
+A recording reaches you one of two ways, and you should not make the owner
+think about which.
+
+**A folder.** They drop a file in the intake folder and walk away. This is the
+Mac path: the file can be any size, it never leaves their machine, and the cut
+can be framed on their face.
+
+**A link.** They send a URL — their own episode on YouTube, a talk, anything
+already online. Write `{"url": "..."}` to `~/.dailies/fetch.json` and run:
+
+```
+[PC, "fetch"]     write_paths: the intake folder
+```
+
+For anyone who publishes long video this is the door that matters: the episode
+is already up, so asking for the master file is asking for exactly the work
+they were trying to avoid. It downloads into the same intake folder, and
+everything after it is identical.
+
+A link takes a while and says nothing while it works, so tell them it started.
+
 ## Before anything
 
 Every command below runs on the owner's Mac through Latch, and every one of
