@@ -104,8 +104,10 @@ When they ask how the channel is doing, how a clip performed, or what is working
 [PC, "yt-stats"]
 ```
 
-Read-only. Returns subscribers, total views, and the recent uploads sorted by
-views — each with likes, comments and whether it is public or still private.
+Read-only, and it returns **every** video ranked by views — not a page.
+Use this for any question about the channel or a video's performance, **never
+the browser**: the API is instant, the browser is slow and cannot attach files
+anyway. Returns subscribers, total views, and all uploads sorted by views — each with likes, comments and whether it is public or still private.
 
 Answer like someone who watched the numbers, not like a table. Lead with what
 changed or what stands out, name the real figures, and — this is the part no
@@ -141,8 +143,10 @@ When they ask how the channel is doing, how a clip performed, or what is working
 [PC, "yt-stats"]
 ```
 
-Read-only. Returns subscribers, total views, and the recent uploads sorted by
-views — each with likes, comments and whether it is public or still private.
+Read-only, and it returns **every** video ranked by views — not a page.
+Use this for any question about the channel or a video's performance, **never
+the browser**: the API is instant, the browser is slow and cannot attach files
+anyway. Returns subscribers, total views, and all uploads sorted by views — each with likes, comments and whether it is public or still private.
 
 Answer like someone who watched the numbers, not like a table. Lead with what
 changed or what stands out, name the real figures, and — this is the part no

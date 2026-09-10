@@ -189,23 +189,33 @@ def stats():
     c = ch["items"][0]
     st = c["statistics"]
     uploads = c["contentDetails"]["relatedPlaylists"]["uploads"]
-    pl = _get("https://www.googleapis.com/youtube/v3/playlistItems"
-              f"?part=snippet,contentDetails&playlistId={uploads}&maxResults=10", token)
-    ids = ",".join(x["contentDetails"]["videoId"] for x in pl.get("items", []))
-    views = {}
-    if ids:
+    # Every upload, not just the first page — the owner asks "all my videos by
+    # views", so page the playlist fully and rank the lot. No browser needed.
+    vid_ids, titles, page = [], {}, None
+    while True:
+        u = ("https://www.googleapis.com/youtube/v3/playlistItems"
+             f"?part=snippet,contentDetails&playlistId={uploads}&maxResults=50")
+        if page:
+            u += f"&pageToken={page}"
+        pl = _get(u, token)
+        for x in pl.get("items", []):
+            i = x["contentDetails"]["videoId"]
+            vid_ids.append(i); titles[i] = x["snippet"]["title"]
+        page = pl.get("nextPageToken")
+        if not page:
+            break
+    stats_by = {}
+    for k in range(0, len(vid_ids), 50):
+        chunk = ",".join(vid_ids[k:k + 50])
         vs = _get("https://www.googleapis.com/youtube/v3/videos"
-                  f"?part=statistics,status&id={ids}", token)
+                  f"?part=statistics,status&id={chunk}", token)
         for v in vs.get("items", []):
-            views[v["id"]] = {"views": int(v["statistics"].get("viewCount", 0)),
-                              "likes": int(v["statistics"].get("likeCount", 0)),
-                              "comments": int(v["statistics"].get("commentCount", 0)),
-                              "privacy": v["status"]["privacyStatus"]}
-    recent = []
-    for x in pl.get("items", []):
-        vid = x["contentDetails"]["videoId"]
-        recent.append({"title": x["snippet"]["title"], "id": vid,
-                       "url": f"https://youtu.be/{vid}", **views.get(vid, {})})
+            stats_by[v["id"]] = {"views": int(v["statistics"].get("viewCount", 0)),
+                                 "likes": int(v["statistics"].get("likeCount", 0)),
+                                 "comments": int(v["statistics"].get("commentCount", 0)),
+                                 "privacy": v["status"]["privacyStatus"]}
+    recent = [{"title": titles[i], "id": i, "url": f"https://youtu.be/{i}",
+               **stats_by.get(i, {})} for i in vid_ids]
     recent.sort(key=lambda r: -(r.get("views") or 0))
     return {"channel": c["snippet"]["title"],
             "subscribers": int(st.get("subscriberCount", 0)),
