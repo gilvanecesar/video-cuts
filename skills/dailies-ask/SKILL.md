@@ -3,7 +3,7 @@ name: dailies-ask
 description: Answer questions about what the owner has said in their own recordings — find a passage, quote it, and offer to cut it. Use whenever they ask where or whether they talked about something, ask for a clip on a subject, or ask what a recording covered.
 ---
 
-# Dailies — ask the archive
+# Video Cuts — ask the archive
 
 This is the half of the agent that works on the days they do not record. They
 have hours of their own words and no way into them; you have every transcript

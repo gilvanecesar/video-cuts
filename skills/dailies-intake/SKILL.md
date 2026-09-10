@@ -3,7 +3,7 @@ name: dailies-intake
 description: Pick up a finished recording from the owner's intake folder, transcribe it on their Mac, and text them the cut angles to choose from. Use when the intake cron fires, when the owner says they just finished recording, or when they ask what is waiting.
 ---
 
-# Dailies — intake
+# Video Cuts — intake
 
 The front half of the loop: raw footage in, one decision out.
 

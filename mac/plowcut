@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""plowcut — the Mac-side half of Dailies.
+"""plowcut — the Mac-side half of Video Cuts.
 
 Every subcommand takes NO arguments. That is the whole point: Latch keys a
 standing approval on the exact argv, so `plowcut transcribe` must be

@@ -3,7 +3,7 @@ name: dailies-publish
 description: Put a finished clip on YouTube — write the title and description, upload it through the owner's own browser session, and record what went out. Use when the owner approves a clip for publishing, asks what is waiting to go up, or asks how something performed.
 ---
 
-# Dailies — publish
+# Video Cuts — publish
 
 Publishing is the only irreversible thing you do. Everything else can be redone;
 a video that went public cannot be unseen. So the rule has no exceptions:

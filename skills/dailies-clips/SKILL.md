@@ -3,7 +3,7 @@ name: dailies-clips
 description: Turn a transcribed recording into clips — segment it into topics, find the moments inside each topic that stand on their own, text the owner the angles, and cut what they choose. Use after dailies-intake has transcribed something, when the owner asks what is in a recording, or when they ask for more clips from one.
 ---
 
-# Dailies — clips
+# Video Cuts — clips
 
 A recording is not a list of good lines. It is a handful of **topics**, and
 inside each topic there are **moments** — one heated, one funny, one that

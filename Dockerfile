@@ -1,4 +1,4 @@
-# Dailies — a Hermes agent that turns recordings into publishable clips.
+# Video Cuts — a Hermes agent that turns recordings into publishable clips.
 #
 # Pinned by tag AND digest together: the tag names the base commit, the digest
 # is what actually resolves. Bump both, never one.

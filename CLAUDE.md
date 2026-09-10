@@ -1,14 +1,18 @@
-# CLAUDE.md — Dailies (agente Hermes/Plow)
+# CLAUDE.md — Video Cuts (agente Hermes/Plow)
 
 Agente que vigia a pasta de gravações do dono, transcreve no Mac dele, acha os
 momentos que se sustentam sozinhos, manda os ângulos por iMessage, corta o que
 ele escolher e pede autorização antes de publicar.
 
-**Feito para o Hermes Hackathon** (Plow + AI Worth Using) — entrega **22/09/2026**,
-ranking por **instalações e uso**, top 10 vai a voto da equipe Plow em 23/09.
-Requisitos: repo público MIT · instalável pelo Agent Index · usar ferramenta
-open-source da Plow · integrar o client de tracking. Contexto completo do
-hackathon: `../BRIEFING.md`.
+**Feito para o Hermes Hackathon** (Plow + AI Worth Using). **Regras atualizadas em
+10/09:** não há mais revisão humana — **o ranking decide**, contando instalações
+por outras pessoas + uso de tokens. Snapshot final **23/09/2026, 13h PT (17h BRT)**.
+#1 leva o Mac Studio, #2 o Mac Mini, top 3 são candidatos ao podcast.
+Requisitos: repo público MIT · **estar na seção Verified** (os anfitriões instalam e
+rodam o agente) · integrar o Agent Index client. Página do agente:
+`aiworthusing.com/agent-index/dailies` (o slug `dailies` é permanente; o nome de
+exibição é **Video Cuts**). Repo: `github.com/gilvanecesar/video-cuts`.
+Contexto completo: `../BRIEFING.md`.
 
 ## Definição de produto — corte é highlight POR ASSUNTO
 

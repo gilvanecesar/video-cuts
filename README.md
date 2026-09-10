@@ -1,9 +1,9 @@
-# Dailies
+# Video Cuts
 
 **You finish recording and walk away. By the time you look at your phone, the
 thinking is done and one decision is waiting.**
 
-Dailies is a Hermes agent with its own phone number. It watches the folder your
+Video Cuts is a Hermes agent with its own phone number. It watches the folder your
 recordings land in, transcribes them on your own Mac, finds the moments that
 stand on their own, and texts you the angles to choose from. You answer with one
 word. It cuts, and asks before anything goes public.
@@ -29,7 +29,7 @@ call that is actually yours to make — which angle, and whether to publish.
 ## Install
 
 ```sh
-git clone https://github.com/gilvanecesar/dailies.git && cd dailies
+git clone https://github.com/gilvanecesar/video-cuts.git && cd dailies
 sh mac/install.sh                # ffmpeg, whisper, model, fonts, face framing
 ```
 
