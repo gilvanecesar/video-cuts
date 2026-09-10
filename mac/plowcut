@@ -18,7 +18,7 @@ in the arguments the agent sends.
 Output is JSON on stdout. Progress goes to stderr so a long job is never
 silent (Latch kills a silent, write-less, network-less command at 15 minutes).
 """
-import json, os, subprocess, sys, time
+import json, os, re, subprocess, sys, time
 from pathlib import Path
 
 HOME = Path(os.environ.get("DAILIES_HOME", Path.home() / ".dailies"))
@@ -46,7 +46,14 @@ def config():
     # small.en, not base.en: base garbles roughly a third of a recording, and
     # every topic and moment the agent picks rests on this text. 465MB and
     # ~23x realtime on an M4 is a cheap price for a transcript worth reading.
-    c.setdefault("model", str(HOME / "models" / "ggml-small.en.bin"))
+    c.setdefault("model", str(HOME / "models" / "ggml-small.bin"))
+    # "auto" lets whisper detect it. The multilingual model is the default on
+    # purpose: an .en model does not merely do worse on other languages, it
+    # invents or force-translates, and every topic the agent picks rests on
+    # this text.
+    c.setdefault("language", "auto")
+    c.setdefault("formats", ["vertical", "horizontal"])
+    c.setdefault("crop_x", 0.5)   # 0 = left, 0.5 = centre, 1 = right
     return c
 
 
@@ -86,7 +93,7 @@ def ready():
 def probe_duration(f):
     try:
         out = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+            [probebin(), "-v", "error", "-show_entries", "format=duration",
              "-of", "default=nw=1:nk=1", str(f)],
             capture_output=True, text=True, timeout=60)
         return round(float(out.stdout.strip()))
@@ -105,7 +112,7 @@ def transcribe():
 
     note(f"extracting audio from {src.name}")
     wav = work / "audio.wav"
-    subprocess.run(["ffmpeg", "-nostdin", "-y", "-i", str(src),
+    subprocess.run(["PLACEHOLDER_FF", "-nostdin", "-y", "-i", str(src),
                     "-ac", "1", "-ar", "16000", "-vn", str(wav)],
                    check=True, capture_output=True)
 
@@ -114,15 +121,39 @@ def transcribe():
     if not model.exists():
         return {"error": f"whisper model missing at {model}",
                 "fix": "download ggml-base.en.bin from huggingface.co/ggerganov/whisper.cpp"}
-    subprocess.run(["whisper-cli", "-m", str(model), "-f", str(wav), "-oj", "-osrt",
-                    "-of", str(work / "transcript")],
+    # Detect the language in its own pass and PIN it. Left on "auto",
+    # whisper does not fail when it guesses wrong — it TRANSLATES, and returns
+    # fluent text in the wrong language. Everything downstream (topics, hooks,
+    # the quoted line the cut snaps to) would then describe words that were
+    # never spoken, and nothing about the output would look broken.
+    lang = c["language"]
+    if lang == "auto":
+        det = subprocess.run(["whisper-cli", "-m", str(model), "-l", "auto",
+                              "-dl", "-f", str(wav)],
+                             capture_output=True, text=True, timeout=600)
+        m = re.search(r"auto-detected language:\s*([a-z]{2})",
+                      det.stdout + det.stderr)
+        if not m:
+            return {"error": "could not detect the spoken language",
+                    "fix": 'set "language" in ~/.dailies/config.json'}
+        lang = m.group(1)
+        note(f"language detected: {lang}")
+
+    # One pass, one word per cue (-ml 1 -sow). Sentences are rebuilt from the
+    # words below; going the other way is impossible, and the clip has to open
+    # on an exact word, not on whatever boundary Whisper felt like drawing.
+    subprocess.run(["whisper-cli", "-m", str(model), "-l", lang,
+                    "-ml", "1", "-sow",
+                    "-f", str(wav), "-oj", "-of", str(work / "transcript")],
                    check=True, capture_output=True)
 
     st = load(STATE, {})
-    st.setdefault("seen", {})[str(src)] = {"at": time.time(), "work": str(work)}
+    st.setdefault("seen", {})[str(src)] = {"at": time.time(), "work": str(work),
+                                           "language": lang}
     save(STATE, st)
     note("done")
-    return {"transcribed": src.name, "transcript": str(work / "transcript.json"),
+    return {"transcribed": src.name, "language": lang,
+            "transcript": str(work / "transcript.json"),
             "duration_s": r.get("duration_s")}
 
 
@@ -155,6 +186,157 @@ def to_s(stamp):
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 
+# name -> (width, height, framing filter). Vertical is a centre crop, which is
+# right for one person facing the camera and wrong for two people side by side;
+# that is a known limit, not an oversight.
+def framing(fmt, x=0.5):
+    """`x` is where the 9:16 window sits horizontally, 0 = left, 1 = right.
+
+    A centre crop is right for one person facing the camera and wrong whenever
+    they are not centred — which is most real footage."""
+    if fmt == "vertical":
+        return (1080, 1920,
+                f"crop=ih*9/16:ih:(iw-ih*9/16)*{x:.3f}:0,scale=1080:1920")
+    if fmt == "square":
+        return (1080, 1080, f"crop=ih:ih:(iw-ih)*{x:.3f}:0,scale=1080:1080")
+    return FORMATS[fmt]
+
+
+FORMATS = {
+    "vertical":   (1080, 1920, "crop=ih*9/16:ih,scale=1080:1920"),
+    "horizontal": (1920, 1080, "scale=1920:1080:force_original_aspect_ratio=decrease,"
+                               "pad=1920:1080:(ow-iw)/2:(oh-ih)/2"),
+    "square":     (1080, 1080, "crop=ih:ih,scale=1080:1080"),
+}
+
+_FF = {}
+
+
+def ffbin():
+    """An ffmpeg that can render text.
+
+    Homebrew's plain `ffmpeg` formula ships without libass or freetype, so
+    `drawtext`, `subtitles` and `ass` simply do not exist in it — and the
+    failure reads like a filtergraph syntax error, not a missing feature.
+    `ffmpeg-full` has them but installs keg-only, off PATH. Look for a capable
+    binary instead of trusting whichever one PATH happens to hand us."""
+    if "bin" in _FF:
+        return _FF["bin"]
+    candidates = [config().get("ffmpeg"),
+                  "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg",
+                  "/usr/local/opt/ffmpeg-full/bin/ffmpeg", "ffmpeg"]
+    plain = None
+    for c in candidates:
+        if not c:
+            continue
+        try:
+            out = subprocess.run([c, "-hide_banner", "-filters"],
+                                 capture_output=True, text=True, timeout=30).stdout
+        except Exception:
+            continue
+        plain = plain or c
+        if " subtitles " in out:
+            _FF["bin"] = c
+            return c
+    _FF["bin"] = plain or "ffmpeg"
+    return _FF["bin"]
+
+
+def probebin():
+    """The ffprobe that belongs to the chosen ffmpeg.
+
+    Installing ffmpeg-full moved x265, which left the plain formula's ffprobe
+    unable to load libx265 — so the one on PATH may be broken even though a
+    working one is right next to the ffmpeg we picked."""
+    b = ffbin()
+    sib = str(Path(b).with_name("ffprobe")) if "/" in b else "ffprobe"
+    try:
+        if subprocess.run([sib, "-version"], capture_output=True,
+                          timeout=15).returncode == 0:
+            return sib
+    except Exception:
+        pass
+    return "ffprobe"
+
+
+def can_caption():
+    return " subtitles " in subprocess.run(
+        [ffbin(), "-hide_banner", "-filters"],
+        capture_output=True, text=True).stdout
+
+
+ASS_HEAD = """[Script Info]
+ScriptType: v4.00+
+PlayResX: {w}
+PlayResY: {h}
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+Style: D,Helvetica,{size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,{outline},0,2,{margin},{margin},{mv},1
+
+[Events]
+Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+"""
+
+
+def ass_t(t):
+    t = max(t, 0); h, r = divmod(t, 3600); m, sec = divmod(r, 60)
+    return f"{int(h)}:{int(m):02d}:{int(sec):02d}.{int(round((sec % 1) * 100)):02d}"
+
+
+def caption_ass(ws, start, end, dest, w, h, per_line=3, hi="&H0000E5FF&"):
+    """Word-by-word captions: a few words on screen, the spoken one lit.
+
+    We already have a timestamp per word — it is what places the hook — so the
+    caption everyone recognises from short-form costs us nothing extra."""
+    inside = [(t, x) for t, x in ws if start <= t < end]
+    if not inside:
+        return 0
+    size = int(h * 0.046)
+    lines, n = [], 0
+    for g in range(0, len(inside), per_line):
+        group = inside[g:g + per_line]
+        gend = inside[g + per_line][0] if g + per_line < len(inside) else end
+        for i, (t, _) in enumerate(group):
+            nxt = group[i + 1][0] if i + 1 < len(group) else gend
+            body = " ".join(
+                (f"{{\\c{hi}}}{x}{{\\c&H00FFFFFF&}}" if j == i else x)
+                for j, (_, x) in enumerate(group))
+            body = body.replace("{", "{").replace("}", "}")
+            lines.append(f"Dialogue: 0,{ass_t(t - start)},{ass_t(nxt - start)},"
+                         f"D,,0,0,0,,{body}")
+            n += 1
+    head = ASS_HEAD.format(w=w, h=h, size=size, outline=max(2, size // 14),
+                           margin=int(w * 0.10), mv=int(h * 0.13))
+    Path(dest).write_text(head + "\n".join(lines) + "\n", encoding="utf8")
+    return n
+
+
+def norm(t):
+    import unicodedata
+    t = unicodedata.normalize("NFD", t.lower())
+    return " ".join("".join(c for c in t if c.isalnum() or c.isspace()).split())
+
+
+def snap(ws, hook_text, hint, window=90):
+    """Start time of `hook_text` in the word stream, searched around `hint`.
+
+    The agent quotes the line the clip should open on; this finds the word it
+    starts at. Without it the clip opens wherever Whisper drew a boundary, and
+    a clip that opens on ten seconds of preamble has already lost the viewer."""
+    want = norm(hook_text).split()
+    if not want:
+        return None
+    near = [(i, t) for i, (t, _) in enumerate(ws) if abs(t - hint) <= window]
+    for i, t in near:
+        got = norm(" ".join(w for _, w in ws[i:i + len(want) + 4])).split()
+        if got[:len(want)] == want:
+            return t
+    return None
+
+
 def cut():
     """Cut the clips named in ~/.dailies/plan.json.
 
@@ -179,28 +361,52 @@ def cut():
         return {"error": f"source recording not found for stem {plan['source']!r}"}
 
     outdir = work / "clips"; outdir.mkdir(parents=True, exist_ok=True)
+    ws = words(work)
 
+    captions = can_caption()
+    if not captions:
+        note("this ffmpeg cannot render text — cutting without captions "
+             "(brew install ffmpeg-full)")
     made = []
     for i, clip in enumerate(plan.get("clips", []), 1):
         start, end = float(clip["start"]), float(clip["end"])
+        hook = clip.get("hook_text")
+        if hook:
+            at = snap(ws, hook, start)
+            if at is None:
+                note(f"  hook not found in the audio: {hook!r} — keeping {start}s")
+            else:
+                if abs(at - start) > 0.05:
+                    note(f"  hook snapped {start:.1f}s → {at:.1f}s")
+                start = at
         slug = "".join(ch if ch.isalnum() else "-" for ch in clip.get("title", f"clip{i}")).strip("-").lower()[:60]
-        dest = outdir / f"{i:02d}-{slug}.mp4"
         note(f"cutting {i}/{len(plan['clips'])}: {clip.get('title','')} [{start:.0f}s-{end:.0f}s]")
 
-        # 9:16 from the centre. No burned captions: YouTube generates its own,
-        # and depending on an ffmpeg built with libass would make the install
-        # fail on any Mac that has the ordinary Homebrew build.
-        vf = "crop=ih*9/16:ih,scale=1080:1920"
-        subprocess.run(
-            ["ffmpeg", "-nostdin", "-y", "-ss", f"{start}", "-to", f"{end}", "-i", str(src),
-             "-vf", vf, "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-             "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(dest)],
-            check=True, capture_output=True)
-        made.append({"title": clip.get("title"), "file": str(dest),
-                     "seconds": round(end - start, 1)})
+        made_here = []
+        for fmt in c["formats"]:
+            w, h, frame = framing(fmt, float(c["crop_x"]))
+            dest = outdir / (f"{i:02d}-{slug}.mp4" if fmt == c["formats"][0]
+                             else f"{i:02d}-{slug}-{fmt}.mp4")
+            vf = frame
+            if captions:
+                sub = outdir / f".{i:02d}-{fmt}.ass"
+                if caption_ass(ws, start, end, sub, w, h):
+                    vf += f",ass={sub}"
+            subprocess.run(
+                [ffbin(), "-nostdin", "-y", "-ss", f"{start}", "-to", f"{end}",
+                 "-i", str(src), "-vf", vf,
+                 "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                 "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(dest)],
+                check=True, capture_output=True)
+            made_here.append({"format": fmt, "file": str(dest)})
+
+        made.append({"title": clip.get("title"), "topic": clip.get("topic"),
+                     "kind": clip.get("kind"), "start": round(start, 1),
+                     "seconds": round(end - start, 1), "renders": made_here})
 
     note("done")
-    return {"cut": len(made), "clips": made, "folder": str(outdir)}
+    return {"cut": len(made), "formats": c["formats"],
+            "captions": captions, "clips": made, "folder": str(outdir)}
 
 
 # --------------------------------------------------------------------------
@@ -211,12 +417,11 @@ INDEX = HOME / "topics.json"
 
 
 def transcript():
-    """The newest transcript, compacted enough for the agent to read in one go.
+    """The newest transcript, line by line with a timestamp on each.
 
-    Whisper emits a cue every few seconds; a two-hour recording is thousands of
-    them. Merge into ~20s blocks so the agent sees the shape of the conversation
-    without drowning, and keep the start time of each block so a cut can be
-    placed on the exact line."""
+    Kept at Whisper's own granularity on purpose: the agent segments topics by
+    reading, but it places `hook_at` on one specific sentence, and no coarser
+    index can tell it where that sentence starts."""
     c, st = config(), load(STATE, {})
     seen = st.get("seen", {})
     if not seen:
@@ -227,22 +432,39 @@ def transcript():
     if not j.exists():
         return {"error": f"transcript missing at {j}"}
 
-    raw = json.loads(j.read_text())
-    cues = raw.get("transcription", raw.get("segments", []))
-    blocks, cur = [], None
-    for cue in cues:
+    return {"source": Path(src).stem, "duration_s": probe_duration(Path(src)),
+            "lines": to_lines(words(work))}
+
+
+def words(work):
+    """[(t, word)] straight from the word-level transcript."""
+    raw = json.loads((work / "transcript.json").read_text())
+    out = []
+    for cue in raw.get("transcription", raw.get("segments", [])):
         off = cue.get("offsets") or {}
         t = (off.get("from", 0) / 1000.0) if off else to_seconds(cue)
-        text = (cue.get("text") or "").strip()
-        if not text:
-            continue
-        if cur is None or t - cur["t"] >= 20:
-            cur = {"t": round(t, 1), "text": text}
-            blocks.append(cur)
+        w = (cue.get("text") or "").strip()
+        if w:
+            out.append((round(t, 2), w))
+    return out
+
+
+def to_lines(ws, max_seconds=15):
+    """Words regrouped into readable lines, broken on sentence ends.
+
+    The agent reads these to segment topics; it names the hook by quoting from
+    them, and `cut` snaps back to the word. Both views, one transcription."""
+    lines, cur = [], None
+    for t, w in ws:
+        if cur is None:
+            cur = {"t": t, "text": w}
         else:
-            cur["text"] += " " + text
-    return {"source": Path(src).stem, "duration_s": probe_duration(Path(src)),
-            "blocks": blocks}
+            cur["text"] += " " + w
+        if w.endswith((".", "?", "!")) or t - cur["t"] >= max_seconds:
+            lines.append(cur); cur = None
+    if cur:
+        lines.append(cur)
+    return lines
 
 
 def to_seconds(cue):
