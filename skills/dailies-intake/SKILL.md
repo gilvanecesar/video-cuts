@@ -20,7 +20,10 @@ can be framed on their face.
 already online. Write `{"url": "..."}` to `~/.dailies/fetch.json` and run:
 
 ```
-[PC, "fetch"]     write_paths: the intake folder
+[PC, "fetch"]     write_paths: BOTH ~/.dailies AND the intake folder
+                  (~/Movies/Dailies). fetch writes the video into the intake
+                  folder and its bookkeeping into ~/.dailies — declare both or
+                  Latch blocks the write and the download fails half-done.
 ```
 
 For anyone who publishes long video this is the door that matters: the episode
@@ -31,6 +34,11 @@ everything after it is identical.
 A link takes a while and says nothing while it works, so tell them it started.
 
 ## Before anything
+
+**Every plowcut command writes to `~/.dailies`** (state and work files); `fetch`
+and `cut` also write under `~/Movies/Dailies`. In `write_paths`, always include
+`~/.dailies`, plus the intake or clip folder for those two — miss `~/.dailies`
+and Latch blocks even a command that only updates its own state.
 
 Every command below runs on the owner's Mac through Latch, and every one of
 them is `~/.dailies/bin/plowcut` with a single fixed word after it. Never add an
