@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+"""plowcut — the Mac-side half of Dailies.
+
+Every subcommand takes NO arguments. That is the whole point: Latch keys a
+standing approval on the exact argv, so `plowcut transcribe` must be
+byte-identical on every run or the owner gets asked again for each new file.
+The variable part — which recording, which clip — lives in state here, never
+in the arguments the agent sends.
+
+    plowcut ready       is there a finished recording waiting?
+    plowcut cut         cut the clips named in ~/.dailies/plan.json
+    plowcut transcribe  transcribe the one that is waiting
+    plowcut status      what plowcut knows
+
+Output is JSON on stdout. Progress goes to stderr so a long job is never
+silent (Latch kills a silent, write-less, network-less command at 15 minutes).
+"""
+import json, os, subprocess, sys, time
+from pathlib import Path
+
+HOME = Path(os.environ.get("DAILIES_HOME", Path.home() / ".dailies"))
+CONFIG, STATE = HOME / "config.json", HOME / "state.json"
+DEFAULT_INTAKE = Path.home() / "Movies" / "Dailies"
+
+
+def load(p, default):
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return default
+
+
+def save(p, obj):
+    HOME.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(obj, indent=2))
+
+
+def config():
+    c = load(CONFIG, {})
+    c.setdefault("intake", str(DEFAULT_INTAKE))
+    c.setdefault("work", str(HOME / "work"))
+    c.setdefault("settle_seconds", 90)   # size must hold still this long
+    c.setdefault("model", str(HOME / "models" / "ggml-base.en.bin"))
+    return c
+
+
+def note(msg):
+    print(f"[plowcut] {msg}", file=sys.stderr, flush=True)
+
+
+def ready():
+    """A recording is ready when its size has not changed for settle_seconds."""
+    c, st = config(), load(STATE, {})
+    intake, seen = Path(c["intake"]), st.get("seen", {})
+    if not intake.is_dir():
+        return {"ready": None, "reason": f"intake folder missing: {intake}"}
+
+    exts = {".mov", ".mp4", ".m4v", ".mkv", ".wav", ".m4a", ".mp3"}
+    now, sizes = time.time(), st.get("sizes", {})
+    candidate = None
+    for f in sorted(intake.iterdir()):
+        if f.name.startswith(".") or f.suffix.lower() not in exts:
+            continue
+        key, size = str(f), f.stat().st_size
+        prev = sizes.get(key)
+        sizes[key] = {"size": size, "at": now if (not prev or prev["size"] != size) else prev["at"]}
+        if key in seen:
+            continue
+        if now - sizes[key]["at"] >= c["settle_seconds"]:
+            candidate = f
+
+    st["sizes"] = sizes
+    save(STATE, st)
+    if not candidate:
+        return {"ready": None, "reason": "nothing settled yet"}
+    return {"ready": candidate.name, "bytes": candidate.stat().st_size,
+            "duration_s": probe_duration(candidate)}
+
+
+def probe_duration(f):
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", str(f)],
+            capture_output=True, text=True, timeout=60)
+        return round(float(out.stdout.strip()))
+    except Exception:
+        return None
+
+
+def transcribe():
+    r = ready()
+    if not r.get("ready"):
+        return r
+    c = config()
+    src = Path(c["intake"]) / r["ready"]
+    work = Path(c["work"]) / src.stem
+    work.mkdir(parents=True, exist_ok=True)
+
+    note(f"extracting audio from {src.name}")
+    wav = work / "audio.wav"
+    subprocess.run(["ffmpeg", "-nostdin", "-y", "-i", str(src),
+                    "-ac", "1", "-ar", "16000", "-vn", str(wav)],
+                   check=True, capture_output=True)
+
+    note("transcribing (this is the long, quiet part)")
+    model = Path(c["model"])
+    if not model.exists():
+        return {"error": f"whisper model missing at {model}",
+                "fix": "download ggml-base.en.bin from huggingface.co/ggerganov/whisper.cpp"}
+    subprocess.run(["whisper-cli", "-m", str(model), "-f", str(wav), "-oj", "-osrt",
+                    "-of", str(work / "transcript")],
+                   check=True, capture_output=True)
+
+    st = load(STATE, {})
+    st.setdefault("seen", {})[str(src)] = {"at": time.time(), "work": str(work)}
+    save(STATE, st)
+    note("done")
+    return {"transcribed": src.name, "transcript": str(work / "transcript.json"),
+            "duration_s": r.get("duration_s")}
+
+
+# --------------------------------------------------------------------------
+# cut
+# --------------------------------------------------------------------------
+
+def srt_time(t):
+    h, r = divmod(max(t, 0), 3600); m, sec = divmod(r, 60)
+    return f"{int(h):02d}:{int(m):02d}:{int(sec):02d},{int(round((sec % 1) * 1000)):03d}"
+
+
+def parse_srt(path):
+    """[(start_s, end_s, text)] — enough for our own re-emit, not a full parser."""
+    out, block = [], []
+    for line in Path(path).read_text(encoding="utf8", errors="replace").splitlines() + [""]:
+        if line.strip() == "":
+            if len(block) >= 2 and "-->" in block[1]:
+                a, b = block[1].split("-->")
+                out.append((to_s(a), to_s(b), "\n".join(block[2:]).strip()))
+            block = []
+        else:
+            block.append(line)
+    return out
+
+
+def to_s(stamp):
+    stamp = stamp.strip().replace(",", ".")
+    h, m, s = stamp.split(":")
+    return int(h) * 3600 + int(m) * 60 + float(s)
+
+
+def cut():
+    """Cut the clips named in ~/.dailies/plan.json.
+
+    The plan is a FILE, not arguments: the agent writes it with plow_write_file
+    at this fixed path, then calls `plowcut cut`. That keeps the argv identical
+    on every run, which is what makes one Latch approval last.
+
+    plan.json:
+      {"source": "<stem of the transcribed recording>",
+       "clips": [{"title": "...", "start": 123.4, "end": 168.0}]}
+    """
+    c = config()
+    plan_path = HOME / "plan.json"
+    if not plan_path.exists():
+        return {"error": "no plan", "expected": str(plan_path)}
+    plan = json.loads(plan_path.read_text())
+
+    work = Path(c["work"]) / plan["source"]
+    src = next((f for f in Path(c["intake"]).iterdir()
+                if f.stem == plan["source"] and not f.name.startswith(".")), None)
+    if not src:
+        return {"error": f"source recording not found for stem {plan['source']!r}"}
+
+    outdir = work / "clips"; outdir.mkdir(parents=True, exist_ok=True)
+
+    made = []
+    for i, clip in enumerate(plan.get("clips", []), 1):
+        start, end = float(clip["start"]), float(clip["end"])
+        slug = "".join(ch if ch.isalnum() else "-" for ch in clip.get("title", f"clip{i}")).strip("-").lower()[:60]
+        dest = outdir / f"{i:02d}-{slug}.mp4"
+        note(f"cutting {i}/{len(plan['clips'])}: {clip.get('title','')} [{start:.0f}s-{end:.0f}s]")
+
+        # 9:16 from the centre. No burned captions: YouTube generates its own,
+        # and depending on an ffmpeg built with libass would make the install
+        # fail on any Mac that has the ordinary Homebrew build.
+        vf = "crop=ih*9/16:ih,scale=1080:1920"
+        subprocess.run(
+            ["ffmpeg", "-nostdin", "-y", "-ss", f"{start}", "-to", f"{end}", "-i", str(src),
+             "-vf", vf, "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+             "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(dest)],
+            check=True, capture_output=True)
+        made.append({"title": clip.get("title"), "file": str(dest),
+                     "seconds": round(end - start, 1)})
+
+    note("done")
+    return {"cut": len(made), "clips": made, "folder": str(outdir)}
+
+
+def status():
+    c, st = config(), load(STATE, {})
+    return {"intake": c["intake"], "work": c["work"],
+            "already_handled": len(st.get("seen", {})),
+            "tools": {t: bool(subprocess.run(["which", t], capture_output=True).returncode == 0)
+                      for t in ("ffmpeg", "ffprobe", "whisper-cli")}}
+
+
+CMDS = {"ready": ready, "transcribe": transcribe, "cut": cut, "status": status}
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2 or sys.argv[1] not in CMDS:
+        print(json.dumps({"error": "usage: plowcut {ready|transcribe|cut|status}"}))
+        sys.exit(2)
+    try:
+        print(json.dumps(CMDS[sys.argv[1]](), indent=2))
+    except subprocess.CalledProcessError as e:
+        print(json.dumps({"error": "command failed",
+                          "stderr": (e.stderr or b"")[-800:].decode("utf8", "replace")}))
+        sys.exit(1)

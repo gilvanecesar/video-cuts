@@ -1,0 +1,11 @@
+services:
+  agent:
+    build: .
+    volumes:
+      - ./plow-credentials:/var/lib/plow/credentials.host:ro
+      - agent-home:/var/lib/hermes
+    # The agent checkpoints on SIGTERM; its supervisor allows 30s and Docker's
+    # default 10s would orphan the transcript lease.
+    stop_grace_period: 35s
+volumes:
+  agent-home:
