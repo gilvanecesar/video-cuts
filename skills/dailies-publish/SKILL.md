@@ -89,6 +89,13 @@ If `yt-poll` times out, they have not finished approving; ask, then poll again.
 If `yt-upload` errors, say what it said and stop — do not fall back to the
 browser uploader, which cannot attach the file.
 
+## Always the absolute path
+
+`PC` is the absolute path you found once (`/Users/.../.dailies/bin/plowcut`).
+Use it verbatim — never `~/.dailies/...`. The `~` does not expand inside the
+sandbox, the binary is not found, and the owner eats a wasted approval before
+you retry with the real path.
+
 ## The channel, on demand
 
 When they ask how the channel is doing, how a clip performed, or what is working:
@@ -118,6 +125,13 @@ the owner published a clip some other way — then use the manual `publish` path
 below.
 
 ## The old manual path (only if the API is not connected and they will not connect)
+
+## Always the absolute path
+
+`PC` is the absolute path you found once (`/Users/.../.dailies/bin/plowcut`).
+Use it verbatim — never `~/.dailies/...`. The `~` does not expand inside the
+sandbox, the binary is not found, and the owner eats a wasted approval before
+you retry with the real path.
 
 ## The channel, on demand
 

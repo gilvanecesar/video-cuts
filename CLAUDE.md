@@ -121,7 +121,45 @@ plow-agents lines | mint <ln_> | rotate | revoke
 | credencial do agente | `./plow-credentials` — **git-ignored, modo 600** |
 | repos de referência | `../ref/` (plow-agents, plow-hermes-agent, latch, life-assistant) |
 
-## Estado (09/09/2026)
+## Estado (10/09/2026) — funcional ponta a ponta
+
+Pelo iMessage, tudo automático: **corta** (tema→gancho→legenda→ícone→cartela→
+quadro reduzido→miniatura, numerado #N), **publica no YouTube** (Data API +
+device flow, sem navegador — o navegador do Latch dirige Playwright e NÃO anexa
+arquivo), e **lê o canal** (inscritos/views/comentários via youtube.readonly).
+Busca no acervo (`search`) responde "onde falei sobre X". Registrado no Agent
+Index (slug `dailies`, nome Video Cuts), repo público `gilvanecesar/video-cuts`,
+reporter de uso s6 no ar.
+
+Provado hoje: subiu cortes reais (youtu.be/V1s5Qw9v-3M, youtu.be/JuACenFJCx4).
+Canal do dono: Gilvane César, 2690 inscritos, 654k views — os 3 vídeos de topo
+são "vida de fazendeiro" (o cruzamento tema×desempenho é o diferencial).
+
+### Comandos do plowcut
+`fetch · ready · transcribe · transcript · index · remember · search · cut ·
+archive · pending · publish · performance · yt-connect · yt-poll · yt-upload ·
+yt-status · yt-stats · status`. yt_upload.py (stdlib) faz a parte da API.
+
+### Armadilhas somadas hoje
+- **Navegador do Latch = Playwright, sem setInputFiles** → upload por navegador é
+  impossível; só a Data API sobe arquivo.
+- **Device flow, não loopback** → o dono aprova por celular; casa com iMessage/nuvem.
+- **Escopo mínimo** → começou `youtube.upload` (só sobe); `yt-stats` exigiu
+  reconectar com `youtube.readonly`.
+- **Caminho absoluto sempre** → `~/.dailies/...` não expande no sandbox (exit 71).
+- **App OAuth em modo Teste** → só e-mails na allowlist aprovam; publicar em
+  produção tira isso e o vencimento de token de 7 dias.
+- **Vídeo sobe PRIVADO** enquanto o app não é verificado pelo Google; o dono
+  torna público com 1 clique (é também o portão de aprovação).
+
+### Pendente
+- Verificação no Agent Index (abre 14/09, requisito pra ganhar).
+- Vídeo de demonstração na página (cortado pelo próprio Video Cuts).
+- Publicar o app OAuth em produção (tira vencimento de 7 dias).
+- Miniatura custom exige CANAL verificado (passo de telefone), separado da
+  verificação do app; degrada limpo se não tiver.
+
+## Estado anterior (09/09/2026)
 
 Funcionando: `ready` · `transcribe` (~27x tempo real, Metal/M4) · `cut`
 (1080x1920) · agente no ar respondendo no iMessage com a persona certa.
