@@ -25,7 +25,7 @@ call that is actually yours to make — which angle, and whether to publish.
 - macOS with [Plow Latch](https://plow.co/download/latch) installed and paired
 - Docker
 - On the Mac: `ffmpeg` and `whisper-cli` (`brew install ffmpeg whisper-cpp`)
-- A Whisper model at `~/.dailies/models/ggml-base.en.bin`
+- A Whisper model at `~/.dailies/models/ggml-small.en.bin`
 
 ## Install
 

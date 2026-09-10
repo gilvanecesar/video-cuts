@@ -8,6 +8,9 @@ The variable part — which recording, which clip — lives in state here, never
 in the arguments the agent sends.
 
     plowcut ready       is there a finished recording waiting?
+    plowcut transcript  the newest transcript, compacted for reading
+    plowcut index       every topic this owner has covered, across recordings
+    plowcut remember    fold ~/.dailies/learn.json into that index
     plowcut cut         cut the clips named in ~/.dailies/plan.json
     plowcut transcribe  transcribe the one that is waiting
     plowcut status      what plowcut knows
@@ -40,7 +43,10 @@ def config():
     c.setdefault("intake", str(DEFAULT_INTAKE))
     c.setdefault("work", str(HOME / "work"))
     c.setdefault("settle_seconds", 90)   # size must hold still this long
-    c.setdefault("model", str(HOME / "models" / "ggml-base.en.bin"))
+    # small.en, not base.en: base garbles roughly a third of a recording, and
+    # every topic and moment the agent picks rests on this text. 465MB and
+    # ~23x realtime on an M4 is a cheap price for a transcript worth reading.
+    c.setdefault("model", str(HOME / "models" / "ggml-small.en.bin"))
     return c
 
 
@@ -197,6 +203,93 @@ def cut():
     return {"cut": len(made), "clips": made, "folder": str(outdir)}
 
 
+# --------------------------------------------------------------------------
+# transcript / index — what the agent reads and writes back
+# --------------------------------------------------------------------------
+
+INDEX = HOME / "topics.json"
+
+
+def transcript():
+    """The newest transcript, compacted enough for the agent to read in one go.
+
+    Whisper emits a cue every few seconds; a two-hour recording is thousands of
+    them. Merge into ~20s blocks so the agent sees the shape of the conversation
+    without drowning, and keep the start time of each block so a cut can be
+    placed on the exact line."""
+    c, st = config(), load(STATE, {})
+    seen = st.get("seen", {})
+    if not seen:
+        return {"error": "nothing transcribed yet"}
+    src, meta = max(seen.items(), key=lambda kv: kv[1]["at"])
+    work = Path(meta["work"])
+    j = work / "transcript.json"
+    if not j.exists():
+        return {"error": f"transcript missing at {j}"}
+
+    raw = json.loads(j.read_text())
+    cues = raw.get("transcription", raw.get("segments", []))
+    blocks, cur = [], None
+    for cue in cues:
+        off = cue.get("offsets") or {}
+        t = (off.get("from", 0) / 1000.0) if off else to_seconds(cue)
+        text = (cue.get("text") or "").strip()
+        if not text:
+            continue
+        if cur is None or t - cur["t"] >= 20:
+            cur = {"t": round(t, 1), "text": text}
+            blocks.append(cur)
+        else:
+            cur["text"] += " " + text
+    return {"source": Path(src).stem, "duration_s": probe_duration(Path(src)),
+            "blocks": blocks}
+
+
+def to_seconds(cue):
+    v = cue.get("start", 0)
+    if isinstance(v, (int, float)):
+        return float(v)
+    h, m, rest = str(v).split(":")
+    return int(h) * 3600 + int(m) * 60 + float(rest.replace(",", "."))
+
+
+def index():
+    """The owner's topic index, accumulated across every recording.
+
+    This is the thing a per-upload clipping tool structurally cannot have: it
+    knows the whole library, so a topic that comes back in a later episode joins
+    the one that is already there instead of starting over."""
+    return load(INDEX, {"topics": {}})
+
+
+def remember():
+    """Fold ~/.dailies/learn.json into the index.
+
+    A file, not arguments — the agent writes it with plow_write_file and calls
+    `plowcut remember`, so the argv never changes.
+
+    learn.json: {"source": "<stem>",
+                 "topics": [{"topic": "pricing", "range": [380, 1120],
+                             "moments": [{"kind": "polemic", "title": "...",
+                                          "hook_at": 412.0, "start": 412.0,
+                                          "end": 456.0}]}]}
+    """
+    f = HOME / "learn.json"
+    if not f.exists():
+        return {"error": "no learn.json", "expected": str(f)}
+    incoming, idx = json.loads(f.read_text()), index()
+    src = incoming["source"]
+    for t in incoming.get("topics", []):
+        slot = idx["topics"].setdefault(t["topic"], {"occurrences": []})
+        slot["occurrences"] = [o for o in slot["occurrences"] if o.get("source") != src]
+        slot["occurrences"].append({"source": src, "range": t.get("range"),
+                                    "moments": t.get("moments", []), "at": time.time()})
+    save(INDEX, idx)
+    return {"topics_known": len(idx["topics"]),
+            "revisited": sorted(k for k, v in idx["topics"].items()
+                                if len({o["source"] for o in v["occurrences"]}) > 1)}
+
+
 def status():
     c, st = config(), load(STATE, {})
     return {"intake": c["intake"], "work": c["work"],
@@ -205,11 +298,12 @@ def status():
                       for t in ("ffmpeg", "ffprobe", "whisper-cli")}}
 
 
-CMDS = {"ready": ready, "transcribe": transcribe, "cut": cut, "status": status}
+CMDS = {"ready": ready, "transcribe": transcribe, "transcript": transcript,
+        "index": index, "remember": remember, "cut": cut, "status": status}
 
 if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in CMDS:
-        print(json.dumps({"error": "usage: plowcut {ready|transcribe|cut|status}"}))
+        print(json.dumps({"error": "usage: plowcut {ready|transcribe|transcript|index|remember|cut|status}"}))
         sys.exit(2)
     try:
         print(json.dumps(CMDS[sys.argv[1]](), indent=2))
