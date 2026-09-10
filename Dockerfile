@@ -9,10 +9,18 @@ FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents@sha256:bb2308bc96acd564b9ea0e9b8b
 # install has no Homebrew and no whisper.cpp, so faster-whisper does the
 # transcription and yt-dlp fetches whatever the owner links. Both live in their
 # own venv: Debian 13 refuses system installs, and rightly.
-RUN /usr/local/bin/uv venv /opt/dailies/venv \
+# uv downloads its own Python; send it to /opt (world-readable) instead of
+# /root, which is 0700 — the agent runs as `hermes` and could not exec a Python
+# living under root's home. --python 3.11 pins it; the whole tree ends up under
+# /opt/dailies where hermes can read and execute it.
+ENV UV_PYTHON_INSTALL_DIR=/opt/dailies/python
+RUN /usr/local/bin/uv venv --python 3.11 /opt/dailies/venv \
  && /usr/local/bin/uv pip install -q --python /opt/dailies/venv/bin/python \
       faster-whisper yt-dlp \
- && /opt/dailies/venv/bin/python -c "import faster_whisper, yt_dlp"
+ && /opt/dailies/venv/bin/python -c "import faster_whisper, yt_dlp" \
+ && HF_HOME=/opt/dailies/models /opt/dailies/venv/bin/python -c \
+      "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')" \
+ && chmod -R a+rX /opt/dailies/python /opt/dailies/venv /opt/dailies/models
 
 # Fonts. Icons are a font, not a folder of images: libass renders "smartphone"
 # as the glyph, so there is nothing to rasterise and nothing to keep in sync.
@@ -23,8 +31,20 @@ RUN mkdir -p /opt/dailies/assets && cd /opt/dailies/assets \
 
 # The same pipeline both sides. On a Mac it drives whisper.cpp and the owner's
 # own ffmpeg through Latch; here it runs in place.
+# In the cloud the container is root but the agent runs as `hermes`, so a bare
+# ~ sends plowcut's state to three different places depending on who calls it.
+# Pin one home under the agent's own tree; the Mac install leaves this unset and
+# uses the owner's ~/.dailies instead.
+ENV DAILIES_HOME=/var/lib/hermes/.dailies
+# faster-whisper model cache, pre-populated at build so the cloud
+# deploy transcribes immediately instead of pulling from HuggingFace.
+ENV HF_HOME=/opt/dailies/models
+
 COPY mac/plowcut mac/yt_upload.py /opt/dailies/bin/
-RUN chmod 0755 /opt/dailies/bin/plowcut /opt/dailies/bin/yt_upload.py
+RUN chmod -R a+rX /opt/dailies \
+ && chmod 0755 /opt/dailies/bin/plowcut /opt/dailies/bin/yt_upload.py \
+ && mkdir -p /var/lib/hermes/.dailies/intake \
+ && chown -R 10000:10000 /var/lib/hermes/.dailies
 
 # The usage reporter, fetched at build from the commit vendor/client.pin names
 # and checked against the hash beside it. Fetched rather than committed because

@@ -34,7 +34,14 @@ from pathlib import Path
 
 HOME = Path(os.environ.get("DAILIES_HOME", Path.home() / ".dailies"))
 CONFIG, STATE = HOME / "config.json", HOME / "state.json"
-DEFAULT_INTAKE = Path.home() / "Movies" / "Dailies"
+# Intake sits beside the state dir, not under a bare ~/Movies — in the cloud
+# HOME is /root while the agent's data lives under DAILIES_HOME, and a bare
+# home path sends `fetch` and `ready` to different places. DAILIES_INTAKE can
+# still override it (the Mac install points it at ~/Movies/Dailies).
+DEFAULT_INTAKE = Path(os.environ.get(
+    "DAILIES_INTAKE",
+    Path.home() / "Movies" / "Dailies" if (Path.home() / "Movies").is_dir()
+    else HOME / "intake"))
 
 
 def load(p, default):
@@ -100,10 +107,16 @@ def ready():
             continue
         key, size = str(f), f.stat().st_size
         prev = sizes.get(key)
-        sizes[key] = {"size": size, "at": now if (not prev or prev["size"] != size) else prev["at"]}
+        # at == 0 is the mark `fetch` leaves: a downloaded file is ready the
+        # instant it lands, so keep that mark instead of restarting the clock.
+        if prev and prev.get("at") == 0 and prev["size"] == size:
+            sizes[key] = prev
+        else:
+            sizes[key] = {"size": size,
+                          "at": now if (not prev or prev["size"] != size) else prev["at"]}
         if key in seen:
             continue
-        if now - sizes[key]["at"] >= c["settle_seconds"]:
+        if sizes[key]["at"] == 0 or now - sizes[key]["at"] >= c["settle_seconds"]:
             candidate = f
 
     st["sizes"] = sizes
@@ -153,6 +166,12 @@ def fetch():
                 "stdout": r.stdout[-400:]}
     g = Path(got[-1])
     note("done")
+    # A downloaded file is ready the instant it lands — it does not need to
+    # "settle" like a file being written into a watched folder. at=0 is the mark
+    # `ready` respects so it picks the file up now instead of waiting.
+    st = load(STATE, {})
+    st.setdefault("sizes", {})[str(g)] = {"size": g.stat().st_size, "at": 0}
+    save(STATE, st)
     return {"fetched": g.name, "bytes": g.stat().st_size,
             "duration_s": probe_duration(g)}
 
@@ -1436,6 +1455,8 @@ if __name__ == "__main__":
     try:
         print(json.dumps(CMDS[sys.argv[1]](), indent=2))
     except subprocess.CalledProcessError as e:
-        print(json.dumps({"error": "command failed",
-                          "stderr": (e.stderr or b"")[-800:].decode("utf8", "replace")}))
+        err = e.stderr or ""
+        if isinstance(err, bytes):
+            err = err.decode("utf8", "replace")
+        print(json.dumps({"error": "command failed", "stderr": err[-800:]}))
         sys.exit(1)
