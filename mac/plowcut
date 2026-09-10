@@ -302,7 +302,11 @@ BODY = "Inter"             # captions and secondary lines
 # A thick black outline on everything is what makes an edit look like 2012.
 # Weight carries the text; a soft shadow separates it from the picture.
 INK = "&H00F2F2F2"         # not pure white — pure white vibrates against video
-ACCENT = "&H004AE2FF"      # BGR: a warm amber, well short of pure yellow
+ACCENT = "&H004AE2FF"      # style rows want AABBGGRR
+# Inline \c overrides want the SIX digit form. Given eight, libass reads the
+# first six and you get a different colour entirely — an amber highlight comes
+# out dark red, and nothing in the log says so.
+ACCENT_INLINE = "&H4AE2FF&"
 ACCENT_HEX = "0xFFE24A"    # the same colour for ffmpeg, which wants RGB
 PANEL = "&H00121316"
 SHADOW = "&H00000000"
@@ -385,7 +389,7 @@ def ass_t(t):
     return f"{int(h)}:{int(m):02d}:{int(sec):02d}.{int(round((sec % 1) * 100)):02d}"
 
 
-def caption_ass(ws, start, end, dest, w, h, per_line=3, hi=ACCENT + "&",
+def caption_ass(ws, start, end, dest, w, h, per_line=3, hi=ACCENT_INLINE,
                 keywords=None, effects=None, face=None, pip=None):
     """Word-by-word captions: a few words on screen, the spoken one lit.
 
@@ -394,7 +398,7 @@ def caption_ass(ws, start, end, dest, w, h, per_line=3, hi=ACCENT + "&",
     mute = [(float(e["from"]) - start, float(e["to"]) - start)
             for e in (effects or []) if e.get("type") == "frame"]
     inside = [(t, x) for t, x in ws if start <= t < end
-              and not any(lo <= t - start < hi for lo, hi in mute)]
+              and not any(m0 <= t - start < m1 for m0, m1 in mute)]
     if not inside and not (keywords or effects):
         return 0
     size = int(h * 0.046)
@@ -407,12 +411,12 @@ def caption_ass(ws, start, end, dest, w, h, per_line=3, hi=ACCENT + "&",
             # A line that begins just before a muted window has no next word to
             # end it, so it stretches across the whole window. Clip it at the
             # edge instead.
-            for lo, hi in mute:
-                if t - start < lo <= nxt - start:
-                    nxt = start + lo
+            for m_lo, _m_hi in mute:
+                if t - start < m_lo <= nxt - start:
+                    nxt = start + m_lo
             plain = " ".join(x for _, x in group)
             body = " ".join(
-                (f"{{\\c{hi}}}{x}{{\\c" + INK + "&}" if j == i else x)
+                (f"{{\\c{hi}}}{x}{{\\c&HF2F2F2&}}" if j == i else x)
                 for j, (_, x) in enumerate(group))
             # Same overflow as the keywords: WrapStyle 2 never wraps, it just
             # runs off both edges. Shrink the line rather than break it — one
