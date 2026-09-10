@@ -19,7 +19,7 @@ in the arguments the agent sends.
 Output is JSON on stdout. Progress goes to stderr so a long job is never
 silent (Latch kills a silent, write-less, network-less command at 15 minutes).
 """
-import json, os, re, subprocess, sys, time
+import json, math, os, re, subprocess, sys, time
 from pathlib import Path
 
 HOME = Path(os.environ.get("DAILIES_HOME", Path.home() / ".dailies"))
@@ -257,17 +257,16 @@ def autoframe(src, start, end, samples=5):
         results = json.loads(out)
     except Exception:
         return None
-    xs = []
+    boxes = []
     for r in results:
         if r.get("faces"):
-            biggest = max(r["faces"], key=lambda b: b["w"] * b["h"])
-            xs.append(biggest["x"])
+            boxes.append(max(r["faces"], key=lambda b: b["w"] * b["h"]))
     for f in shots:
         Path(f).unlink(missing_ok=True)
-    if not xs:
+    if not boxes:
         return None
-    xs.sort()
-    return xs[len(xs) // 2]
+    med = lambda k: sorted(b[k] for b in boxes)[len(boxes) // 2]
+    return {"x": med("x"), "y": med("y"), "w": med("w"), "h": med("h")}
 
 
 def framing(fmt, x=0.5):
@@ -292,6 +291,19 @@ FORMATS = {
 
 FPS = 30
 ASSETS = HOME / "assets"      # the icon font libass renders by ligature
+
+ICON_FONT = "Material Symbols Rounded"
+DISPLAY = "Anton"          # keywords and card titles: condensed, heavy, tight
+BODY = "Inter"             # captions and secondary lines
+
+# A thick black outline on everything is what makes an edit look like 2012.
+# Weight carries the text; a soft shadow separates it from the picture.
+INK = "&H00F2F2F2"         # not pure white — pure white vibrates against video
+ACCENT = "&H004AE2FF"      # BGR: a warm amber, well short of pure yellow
+ACCENT_HEX = "0xFFE24A"    # the same colour for ffmpeg, which wants RGB
+PANEL = "&H00121316"
+SHADOW = "&H00000000"
+
 
 _FF = {}
 
@@ -370,13 +382,16 @@ def ass_t(t):
     return f"{int(h)}:{int(m):02d}:{int(sec):02d}.{int(round((sec % 1) * 100)):02d}"
 
 
-def caption_ass(ws, start, end, dest, w, h, per_line=3, hi="&H0000E5FF&",
-                keywords=None, effects=None):
+def caption_ass(ws, start, end, dest, w, h, per_line=3, hi=ACCENT + "&",
+                keywords=None, effects=None, face=None, pip=None):
     """Word-by-word captions: a few words on screen, the spoken one lit.
 
     We already have a timestamp per word — it is what places the hook — so the
     caption everyone recognises from short-form costs us nothing extra."""
-    inside = [(t, x) for t, x in ws if start <= t < end]
+    mute = [(float(e["from"]) - start, float(e["to"]) - start)
+            for e in (effects or []) if e.get("type") == "frame"]
+    inside = [(t, x) for t, x in ws if start <= t < end
+              and not any(lo <= t - start < hi for lo, hi in mute)]
     if not inside and not (keywords or effects):
         return 0
     size = int(h * 0.046)
@@ -386,9 +401,15 @@ def caption_ass(ws, start, end, dest, w, h, per_line=3, hi="&H0000E5FF&",
         gend = inside[g + per_line][0] if g + per_line < len(inside) else end
         for i, (t, _) in enumerate(group):
             nxt = group[i + 1][0] if i + 1 < len(group) else gend
+            # A line that begins just before a muted window has no next word to
+            # end it, so it stretches across the whole window. Clip it at the
+            # edge instead.
+            for lo, hi in mute:
+                if t - start < lo <= nxt - start:
+                    nxt = start + lo
             plain = " ".join(x for _, x in group)
             body = " ".join(
-                (f"{{\\c{hi}}}{x}{{\\c&H00FFFFFF&}}" if j == i else x)
+                (f"{{\\c{hi}}}{x}{{\\c" + INK + "&}" if j == i else x)
                 for j, (_, x) in enumerate(group))
             # Same overflow as the keywords: WrapStyle 2 never wraps, it just
             # runs off both edges. Shrink the line rather than break it — one
@@ -406,22 +427,33 @@ def caption_ass(ws, start, end, dest, w, h, per_line=3, hi="&H0000E5FF&",
         text = str(k.get("text", ""))
         icon = k.get("icon")
         a, b = at - start, min(at - start + float(k.get("hold", 1.9)), end - start)
-        y = int(h * 0.30 if icon else h * 0.16)
+        # Compose around the speaker, not on top of them. The face box is in
+        # source fractions; the vertical crop is none, so its y and height carry
+        # straight over. Sit the whole group in the headroom above the face when
+        # there is any, and fall back to the old fixed band when there is not.
+        top = ((face["y"] - face["h"] / 2) * h) if face else h
+        block = int(h * 0.20 if icon else h * 0.09)
+        gs_pre = int(h * 0.135) if icon else 0
+        floor_y = int(h * 0.045) + gs_pre // 2      # \an5 hangs half the glyph above y
+        y = (int(max(floor_y, top - block - h * 0.03))
+             if top - block > h * 0.10 else int(h * 0.30 if icon else h * 0.16))
         if icon:
-            gs = int(h * 0.135)
+            gs = gs_pre
             lines.append(f"Dialogue: 2,{ass_t(a)},{ass_t(b)},I,,0,0,0,,"
                          f"{{{pop()}\\fs{gs}\\an5\\pos({int(w/2)},{y})}}{icon}")
             y += int(gs * 0.66)
             n += 1
         if text:
             # Long words overflow a fixed size and get sliced by the frame edge.
-            fit = int((w * 0.86) / max(1, len(text) * 0.60))
-            size = max(int(h * 0.030), min(ksize, fit))
+            # Anton is condensed: about 0.42 em per cap, so the same
+            # string carries a much larger body than a grotesque would.
+            fit = int((w * 0.90) / max(1, len(text) * 0.42))
+            size = max(int(h * 0.034), min(int(h * 0.105), fit))
             lines.append(f"Dialogue: 2,{ass_t(a)},{ass_t(b)},K,,0,0,0,,"
                          f"{{{pop(150)}\\fs{size}\\an8\\pos({int(w/2)},{y})}}{text}")
             n += 1
 
-    lines += fx_events(effects, start, end, w, h)
+    lines += fx_events(effects, start, end, w, h, face, pip)
     n += len(effects or [])
     head = ASS_HEAD.format(w=w, h=h, styles=fx_styles(w, h))
     Path(dest).write_text(head + "\n".join(lines) + "\n", encoding="utf8")
@@ -470,32 +502,114 @@ def pick_keywords(ws, start, end, want=2, min_len=6):
 # rasterise. Only zoom lives in ffmpeg, because it moves the picture itself.
 # --------------------------------------------------------------------------
 
-ICON_FONT = "Material Symbols Rounded"
-YELLOW, WHITE, BLACK = "&H0000E5FF&", "&H00FFFFFF&", "&H00000000&"
-
-
 def fx_styles(w, h):
-    cap = int(h * 0.046)
-    return f"""Style: D,Helvetica,{cap},{WHITE[:-1]},{WHITE[:-1]},{BLACK[:-1]},{BLACK[:-1]},-1,0,0,0,100,100,0,0,1,{max(2, cap // 14)},0,2,{int(w*0.10)},{int(w*0.10)},{int(h*0.13)},1
-Style: K,Helvetica,{int(h*0.075)},{YELLOW[:-1]},{YELLOW[:-1]},{BLACK[:-1]},{BLACK[:-1]},-1,0,0,0,100,100,2,0,1,{max(3,int(h*0.075)//12)},0,8,{int(w*0.10)},{int(w*0.10)},{int(h*0.16)},1
-Style: I,{ICON_FONT},{int(h*0.11)},{YELLOW[:-1]},{YELLOW[:-1]},{BLACK[:-1]},{BLACK[:-1]},0,0,0,0,100,100,0,0,1,0,0,5,20,20,20,1
-Style: CT,Helvetica,{int(h*0.070)},{WHITE[:-1]},{WHITE[:-1]},{BLACK[:-1]},{BLACK[:-1]},-1,0,0,0,100,100,1,0,1,0,0,5,20,20,20,1
-Style: CS,Helvetica,{int(h*0.036)},{YELLOW[:-1]},{YELLOW[:-1]},{BLACK[:-1]},{BLACK[:-1]},0,0,0,0,100,100,0,0,1,0,0,5,20,20,20,1
-Style: BOX,Helvetica,20,&H00101418,&H00101418,&H00101418,&H00101418,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1"""
+    cap = int(h * 0.048)
+    return f"""Style: D,{BODY},{cap},{INK},{INK},{SHADOW},{SHADOW},-1,0,0,0,100,100,-1,0,1,0,{max(3, cap // 16)},2,{int(w*0.09)},{int(w*0.09)},{int(h*0.125)},1
+Style: DH,{BODY},{cap},{ACCENT},{ACCENT},{SHADOW},{SHADOW},-1,0,0,0,100,100,-1,0,1,0,{max(3, cap // 16)},2,{int(w*0.09)},{int(w*0.09)},{int(h*0.125)},1
+Style: K,{DISPLAY},{int(h*0.088)},{INK},{INK},{SHADOW},{SHADOW},0,0,0,0,100,100,-2,0,1,0,{int(h*0.0032)},5,20,20,20,1
+Style: I,{ICON_FONT},{int(h*0.11)},{ACCENT},{ACCENT},{SHADOW},{SHADOW},0,0,0,0,100,100,0,0,1,0,{int(h*0.0022)},5,20,20,20,1
+Style: CT,{DISPLAY},{int(h*0.062)},{INK},{INK},{SHADOW},{SHADOW},0,0,0,0,100,100,-1,0,1,0,0,7,20,20,20,1
+Style: CS,{BODY},{int(h*0.030)},&H00A8A8A8,&H00A8A8A8,{SHADOW},{SHADOW},0,0,0,0,100,100,0,0,1,0,0,7,20,20,20,1
+Style: BOX,{BODY},20,{PANEL},{PANEL},{PANEL},{PANEL},0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
+Style: RULE,{BODY},20,{ACCENT},{ACCENT},{ACCENT},{ACCENT},0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1"""
 
 
-def box(x, y, bw, bh):
-    """An ASS drawing rectangle — used for card backgrounds and bars."""
-    return (f"{{\\p1\\pos({x},{y})}}m 0 0 l {bw} 0 l {bw} {bh} l 0 {bh}{{\\p0}}")
+def box(x, y, bw, bh, r=0):
+    """An ASS drawing rectangle, optionally with rounded corners.
+
+    Sharp corners are the other half of why a panel reads as PowerPoint. ASS
+    drawing mode has cubic beziers, so a real radius costs four curves."""
+    if r <= 0:
+        return f"{{\\p1\\pos({x},{y})}}m 0 0 l {bw} 0 l {bw} {bh} l 0 {bh}{{\\p0}}"
+    k = int(r * 0.45)          # bezier handle for a quarter circle
+    return (f"{{\\p1\\pos({x},{y})}}"
+            f"m {r} 0 l {bw-r} 0 b {bw-k} 0 {bw} {k} {bw} {r} "
+            f"l {bw} {bh-r} b {bw} {bh-k} {bw-k} {bh} {bw-r} {bh} "
+            f"l {r} {bh} b {k} {bh} 0 {bh-k} 0 {bh-r} "
+            f"l 0 {r} b 0 {k} {k} 0 {r} 0{{\\p0}}")
 
 
-def pop(ms=130, over=118):
-    """Lands oversized and settles. The whole grammar of short-form motion."""
-    return (f"\\fad(90,150)\\t(0,{ms},\\fscx{over}\\fscy{over})"
-            f"\\t({ms},{ms*2},\\fscx100\\fscy100)")
+def pop(ms=150, over=112):
+    """Overshoot and settle back, instead of a straight line to full size.
+
+    Three segments approximate an ease-out with a little bounce: past the mark,
+    slightly under, then home. Linear scaling is what makes motion feel like a
+    slide transition."""
+    a, b, c = int(ms * 0.55), int(ms * 0.85), ms
+    return (f"\\fad(80,140)\\fscx40\\fscy40"
+            f"\\t(0,{a},0.6,\\fscx{over}\\fscy{over})"
+            f"\\t({a},{b},\\fscx97\\fscy97)"
+            f"\\t({b},{c},\\fscx100\\fscy100)")
 
 
-def fx_events(effects, start, end, w, h):
+def rounded_mask(w, h, r, dest):
+    """A rounded-rectangle alpha mask, rendered once and reused per frame.
+
+    geq is per-pixel and slow; running it on one still and merging is the
+    difference between a clip that renders in seconds and one that does not."""
+    if Path(dest).exists():
+        return dest
+    expr = (f"if(lte(pow(max(max(0\\,{r}-X)\\,X-(W-{r}))\\,2)"
+            f"+pow(max(max(0\\,{r}-Y)\\,Y-(H-{r}))\\,2),{r}*{r}),255,0)")
+    subprocess.run([ffbin(), "-nostdin", "-v", "error", "-y",
+                    "-f", "lavfi", "-i", f"color=c=black:s={w}x{h}:d=1",
+                    "-vf", f"format=gray,geq=lum='{expr}'",
+                    "-frames:v", "1", str(dest)], check=True, capture_output=True)
+    return dest
+
+
+def pip_graph(frames, w, h, tmp):
+    """Compose the speaker into a rounded, tilted card over a blurred plate.
+
+    In a tight talking head there is no honest place to put a panel: it either
+    covers the face or crowds the caption. Shrinking the picture makes room,
+    which is what an editor does and what a fixed overlay cannot."""
+    if not frames:
+        return None, [], None
+    e = frames[0]
+    a, b = float(e["_a"]), float(e["_b"])
+    sc = float(e.get("scale", 0.52))
+    ang = float(e.get("angle", -3.5))
+    pw, ph = int(w * sc) // 2 * 2, int(h * sc) // 2 * 2
+    bd = max(4, int(w * 0.008))
+    r = int(min(pw, ph) * 0.075)
+    align = e.get("align", "top")
+
+    pm = rounded_mask(pw, ph, r, tmp / f"m{pw}x{ph}r{r}.png")
+    bm = rounded_mask(pw + 2 * bd, ph + 2 * bd, r + bd,
+                      tmp / f"m{pw+2*bd}x{ph+2*bd}r{r+bd}.png")
+
+    x = int((w - pw) / 2)
+    y = int(h * 0.035) if align == "top" else int(h - ph - h * 0.26)
+    rad = f"{ang}*PI/180"
+    inputs = ["-loop", "1", "-i", str(pm), "-loop", "1", "-i", str(bm)]
+    win = f"between(t,{a:.2f},{b:.2f})"
+    # Blur by shrinking and growing back rather than convolving at full size:
+    # a 22px box blur over 1080x1920 costs more than the rest of the clip put
+    # together. And gate every expensive filter on the window — without it they
+    # run on every frame and only the compositing step is skipped.
+    g = (
+        f"[v]split=3[b0][b1][b2];"
+        f"[b1]scale=iw/10:-2,gblur=sigma=5,scale={w}:{h}:flags=bilinear,"
+        f"eq=brightness=-0.12:saturation=0.80[blur];"
+        f"[b0][blur]overlay=0:0:enable='{win}'[bgz];"
+        f"[b2]scale={pw}:{ph},format=rgba[praw];"
+        f"[1:v]format=gray[pm];[praw][pm]alphamerge[pa];"
+        f"color=c={ACCENT_HEX}:s={pw+2*bd}x{ph+2*bd}:d={b-a+1:.2f}:r={FPS},format=rgba[bc];"
+        f"[2:v]format=gray[bm];[bc][bm]alphamerge[bd0];"
+        f"[bd0][pa]overlay={bd}:{bd}:shortest=1[card];"
+        f"[card]rotate={rad}:c=none:ow=rotw({rad}):oh=roth({rad}):enable='{win}'[cardr];"
+        f"[bgz][cardr]overlay=(W-w)/2:{y-bd}:enable='{win}'[vout]"
+    )
+    # Rotation grows the box: the occupied height is the rotated bounding box,
+    # not the card's own height, and a panel placed by the smaller number lands
+    # back on top of the picture.
+    th = abs(math.radians(ang))
+    roth = (ph + 2 * bd) * math.cos(th) + (pw + 2 * bd) * math.sin(th)
+    return g, inputs, {"a": a, "b": b, "bottom": int(y - bd + roth)}
+
+
+def fx_events(effects, start, end, w, h, face=None, pip=None):
     """Compile the agent's effect list into ASS dialogue lines."""
     out = []
     for e in effects or []:
@@ -509,40 +623,64 @@ def fx_events(effects, start, end, w, h):
         if kind == "card":
             title, sub = str(e.get("title", "")), str(e.get("sub", ""))
             icon = e.get("icon")
-            tfs = max(int(h * 0.034),
-                      min(int(h * 0.068), int((w * 0.70) / max(1, len(title) * 0.56))))
-            sfs = int(tfs * 0.46)
-            gs = int(tfs * 1.25) if icon else 0
-            # Height follows the content instead of the content fighting a box.
-            bh = int(gs * 1.15 + tfs * 1.5 + (sfs * 1.7 if sub else 0) + h * 0.045)
-            bw = int(w * 0.84)
-            x, y = int((w - bw) / 2), int(h * 0.22)
-            cy = y + int(h * 0.022)
+            pad = int(w * 0.055)
+            tfs = max(int(h * 0.030),
+                      min(int(h * 0.058), int((w * 0.62) / max(1, len(title) * 0.50))))
+            sfs = int(tfs * 0.48)
+            gs = int(tfs * 1.45) if icon else 0
+            longest = max(len(title), len(sub) * 0.62 if sub else 0)
+            bw = int(min(w * 0.86, max(w * 0.50, pad * 2 + tfs * 0.50 * longest)))
+            bh = int(pad * 1.5 + gs * (1.25 if icon else 0) + tfs * 1.15
+                     + (sfs * 1.9 if sub else 0))
+            r = int(h * 0.014)
+            x = int((w - bw) / 2)
+            # A frame effect shrinks the speaker to make room; putting the panel
+            # back over them wastes the room it just made.
+            if pip and not (b <= pip["a"] or a >= pip["b"]):
+                y = int(pip["bottom"] + h * 0.030)
+            elif face:
+                top_f = (face["y"] - face["h"] / 2) * h
+                bot_f = (face["y"] + face["h"] / 2) * h
+                if top_f - bh > h * 0.07:
+                    y = int(max(h * 0.05, top_f - bh - h * 0.035))   # headroom
+                else:
+                    y = int(min(h * 0.68 - bh, bot_f + h * 0.035))   # below the face
+            else:
+                y = int(h * 0.23)
+            # Panel, then a hairline accent rule down its left edge — the rule
+            # is what stops a dark rectangle from reading as a placeholder.
             out.append(f"Dialogue: 1,{ass_t(a)},{ass_t(b)},BOX,,0,0,0,,"
-                       f"{{\\fad(120,180)\\alpha&H28&}}{box(x, y, bw, bh)}")
+                       f"{{\\fad(140,200)\\alpha&H1A&"
+                       f"\\clip({x},{y},{x},{y+bh})\\t(0,240,\\clip({x},{y},{x+bw},{y+bh}))}}"
+                       f"{box(x, y, bw, bh, r)}")
+            out.append(f"Dialogue: 1,{ass_t(a)},{ass_t(b)},RULE,,0,0,0,,"
+                       f"{{\\fad(240,200)}}{box(x, y + r, int(h*0.004), bh - 2*r)}")
+            tx, ty = x + pad, y + int(pad * 0.75)
             if icon:
                 out.append(f"Dialogue: 2,{ass_t(a)},{ass_t(b)},I,,0,0,0,,"
-                           f"{{{pop()}\\fs{gs}\\an8\\pos({int(w/2)},{cy})}}{icon}")
-                cy += int(gs * 1.05)
+                           f"{{{pop()}\\fs{gs}\\an7\\pos({tx},{ty})}}{icon}")
+                ty += int(gs * 1.25)
             out.append(f"Dialogue: 2,{ass_t(a)},{ass_t(b)},CT,,0,0,0,,"
-                       f"{{{pop(150)}\\fs{tfs}\\an8\\pos({int(w/2)},{cy})}}{title}")
+                       f"{{{pop(170)}\\fs{tfs}\\an7\\pos({tx},{ty})}}{title}")
             if sub:
                 out.append(f"Dialogue: 2,{ass_t(a)},{ass_t(b)},CS,,0,0,0,,"
-                           f"{{\\fad(220,180)\\fs{sfs}\\an8"
-                           f"\\pos({int(w/2)},{cy + int(tfs * 1.35)})}}{sub}")
+                           f"{{\\fad(260,180)\\fs{sfs}\\an7"
+                           f"\\pos({tx},{ty + int(tfs * 1.25)})}}{sub}")
 
         elif kind == "lower_third":
             text = str(e.get("text", ""))
-            fs = int(h * 0.030)
-            bh = int(fs * 2.1)
-            bw = min(int(w * 0.86), int(fs * 0.56 * len(text) + w * 0.09))
+            fs = int(h * 0.026)
+            bh, r = int(fs * 2.3), int(fs * 0.5)
+            bw = min(int(w * 0.82), int(fs * 0.52 * len(text) + w * 0.075))
             x, y = int(w * 0.07), int(h * 0.735)
             out.append(f"Dialogue: 1,{ass_t(a)},{ass_t(b)},BOX,,0,0,0,,"
-                       f"{{\\fad(150,200)\\alpha&H33&\\clip({x},{y},{x},{y+bh})"
-                       f"\\t(0,280,\\clip({x},{y},{x+bw},{y+bh}))}}{box(x, y, bw, bh)}")
+                       f"{{\\fad(150,200)\\alpha&H22&\\clip({x},{y},{x},{y+bh})"
+                       f"\\t(0,300,0.5,\\clip({x},{y},{x+bw},{y+bh}))}}{box(x, y, bw, bh, r)}")
+            out.append(f"Dialogue: 1,{ass_t(a)},{ass_t(b)},RULE,,0,0,0,,"
+                       f"{{\\fad(300,200)}}{box(x, y + r, int(h*0.0035), bh - 2*r)}")
             out.append(f"Dialogue: 2,{ass_t(a)},{ass_t(b)},CS,,0,0,0,,"
-                       f"{{\\fad(280,180)\\an4\\fs{fs}"
-                       f"\\pos({x+int(w*0.030)},{y+int(bh*0.52)})}}{text}")
+                       f"{{\\fad(320,180)\\an4\\fs{fs}\\c" + INK + "&"
+                       f"\\pos({x+int(w*0.028)},{y+int(bh*0.52)})}}{text}")
 
         elif kind == "flash":
             out.append(f"Dialogue: 3,{ass_t(a)},{ass_t(min(a + 0.18, b))},BOX,,0,0,0,,"
@@ -653,8 +791,9 @@ def cut():
 
         crop_x = c["crop_x"]
         if crop_x == "auto":
-            fx = autoframe(src, start, end)
-            if fx is None:
+            face = autoframe(src, start, end)
+            fx_face = face["x"] if face else None
+            if fx_face is None:
                 crop_x = 0.5
                 note("  no face found — framing centred, which may be wrong")
             else:
@@ -663,8 +802,8 @@ def cut():
                 size = probe_size(src) or (16, 9)
                 cw = min(1.0, (size[1] / size[0]) * (9 / 16))
                 span = max(1e-6, 1 - cw)
-                crop_x = min(1.0, max(0.0, (fx - cw / 2) / span))
-                note(f"  face at x={fx:.3f} → crop_x={crop_x:.3f}")
+                crop_x = min(1.0, max(0.0, (fx_face - cw / 2) / span))
+                note(f"  face at x={fx_face:.3f} → crop_x={crop_x:.3f}")
         crop_x = float(crop_x)
 
         made_here = []
@@ -673,6 +812,7 @@ def cut():
             dest = outdir / (f"{i:02d}-{slug}.mp4" if fmt == c["formats"][0]
                              else f"{i:02d}-{slug}-{fmt}.mp4")
             vf = frame
+            overlay_ass = None
             fx = list(clip.get("effects") or [])
             # "icon" used to be its own effect and is the same thing as a
             # keyword that carries a glyph. Accept both spellings; keep one.
@@ -686,6 +826,13 @@ def cut():
                 vf += (f",zoompan=z='max(1,min({expr},1.35))'"
                        f":d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
                        f":s={w}x{h}:fps={FPS}")
+            # Work the pip out first: the caption layer has to know where the
+            # frame lands before it can place a panel clear of it.
+            frames = [dict(e, _a=float(e.get("from", 0)) - start,
+                              _b=float(e.get("to", 0)) - start)
+                      for e in fx if e.get("type") == "frame"]
+            graph, extra, pipbox = (pip_graph(frames, w, h, outdir)
+                                    if frames else (None, [], None))
             if captions:
                 sub = outdir / f".{i:02d}-{fmt}.ass"
                 kws = clip.get("keywords")
@@ -697,16 +844,34 @@ def cut():
                     # Only invent keywords when the agent named no graphics at
                     # all; otherwise the two layers say the same thing twice.
                     kws = [] if fx else pick_keywords(ws, start, end)
-                if caption_ass(ws, start, end, sub, w, h, keywords=kws,
+                if caption_ass(ws, start, end, sub, w, h, keywords=kws, face=face, pip=pipbox,
                                effects=[e for e in fx
                                         if e.get("type") not in ("punch", "pull")]):
-                    vf += f",ass={sub}:fontsdir={ASSETS}"
-            subprocess.run(
-                [ffbin(), "-nostdin", "-y", "-ss", f"{start}", "-to", f"{end}",
-                 "-i", str(src), "-vf", vf,
-                 "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-                 "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(dest)],
-                check=True, capture_output=True)
+                    # Applied LAST, after the frame composite. Burned in before
+                    # it, the graphics get shrunk into the card along with the
+                    # picture — which is exactly the space they were meant to
+                    # stay out of.
+                    overlay_ass = f"ass={sub}:fontsdir={ASSETS}"
+            overlay_ass = overlay_ass if captions else None
+            enc = ["-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                   "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"]
+            head = [ffbin(), "-nostdin", "-y", "-ss", f"{start}", "-to", f"{end}",
+                    "-i", str(src)]
+
+            if graph:
+                # -t on the OUTPUT, not just -to on the input: the looped mask
+                # images never end, so without it the graph keeps producing
+                # frames long after the video has run out.
+                tail = f";[vout]{overlay_ass}[vfin]" if overlay_ass else ""
+                out_label = "[vfin]" if overlay_ass else "[vout]"
+                cmd = head + extra + [
+                    "-filter_complex", f"[0:v]{vf}[v];{graph}{tail}",
+                    "-map", out_label, "-map", "0:a?",
+                    "-t", f"{end - start:.3f}"] + enc + [str(dest)]
+            else:
+                full = vf + (f",{overlay_ass}" if overlay_ass else "")
+                cmd = head + ["-vf", full] + enc + [str(dest)]
+            subprocess.run(cmd, check=True, capture_output=True)
             made_here.append({"format": fmt, "file": str(dest)})
 
         made.append({"title": clip.get("title"), "topic": clip.get("topic"),
