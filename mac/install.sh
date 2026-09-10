@@ -50,6 +50,9 @@ fetch Anton.ttf   "https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regu
 fetch Inter.ttf   "https://github.com/google/fonts/raw/main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf"
 
 # --- the Mac side ----------------------------------------------------------
+# A canonical launcher the agent can always find. The sandbox does not expand
+# ~ and does not carry ~/.dailies/bin on PATH, so the agent must use one fixed
+# absolute path; we also drop a copy where common PATHs look, best-effort.
 say "  installing plowcut"
 if [ -f "$(dirname "$0")/plowcut" ]; then
   install -m 0755 "$(dirname "$0")/plowcut" "$HOME_DIR/bin/plowcut"
@@ -74,5 +77,10 @@ fi
 
 say ""
 "$HOME_DIR/bin/plowcut" status
+say ""
+say ""
+say "The agent runs plowcut by this exact path — it is printed here so the"
+say "first message to your agent can hand it over:"
+say "  $HOME_DIR/bin/plowcut"
 say ""
 say "Drop a recording in $INTAKE and text your agent."
