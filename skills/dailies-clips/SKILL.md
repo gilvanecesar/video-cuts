@@ -90,7 +90,7 @@ file rather than two because every distinct path is a prompt the owner has to
 click on first use.
 
 - `~/.dailies/plan.json` — the moments they approved, plus everything you found:
-  `{"source", "clips": [{"topic", "kind", "title", "hook_text", "start", "end",
+  `{"source", "formats", "clips": [{"topic", "kind", "title", "hook_text", "start", "end",
   "keywords": [{"text", "at"}]}]}`
 
   Each clip may also carry `effects` — the graphics you choose to put on it.
@@ -166,8 +166,8 @@ When the owner is not at the Mac — which is most of the time, and always when
 they came in through a link — send the file into the thread. A path they cannot
 tap is not a delivery.
 
-Send the horizontal one (vertical only if they asked for Shorts) rather than
-sending both. If the file is too large for the thread, say where it is and offer to cut
+Send the format they asked for — horizontal for YouTube, vertical for Shorts —
+rather than sending both. `formats` in the plan decides which is cut. If the file is too large for the thread, say where it is and offer to cut
 a shorter version instead of failing silently.
 
 `remember` returns `revisited` — the topics that now appear in more than one

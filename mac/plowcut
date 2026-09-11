@@ -970,9 +970,12 @@ def cut():
         crop_x = float(crop_x)
 
         made_here = []
-        for fmt in c["formats"]:
+        # Format is the owner's call, per request: the plan (or an individual
+        # clip) names `formats`; otherwise fall back to the config default.
+        fmts = clip.get("formats") or plan.get("formats") or c["formats"]
+        for fmt in fmts:
             w, h, frame = framing(fmt, crop_x)
-            dest = outdir / (f"{i:02d}-{slug}.mp4" if fmt == c["formats"][0]
+            dest = outdir / (f"{i:02d}-{slug}.mp4" if fmt == fmts[0]
                              else f"{i:02d}-{slug}-{fmt}.mp4")
             vf = frame
             overlay_ass = None
@@ -1058,7 +1061,7 @@ def cut():
 
     learned = fold_topics(src.stem, plan["topics"]) if plan.get("topics") else None
     note("done")
-    return {"cut": len(made), "formats": c["formats"], "index": learned,
+    return {"cut": len(made), "formats": (plan.get("formats") or c["formats"]), "index": learned,
             "captions": captions, "clips": made, "folder": str(outdir)}
 
 

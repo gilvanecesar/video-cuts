@@ -28,9 +28,9 @@ thinking is done and one decision is waiting.
 
 Text it a YouTube link or drop a recording in a folder. Video Cuts transcribes
 it **on your own machine**, finds the moments that stand on their own, and texts
-you the angles to choose from. You answer with one word. It cuts **horizontal for
-YouTube** — or vertical for Shorts, framed on your face — opening on the strongest
-line, with captions, icons and motion it chose, and, when you say yes, publishes
+you the angles to choose from. You answer with one word. It cuts in the format
+you ask for — **horizontal** for YouTube, **vertical** for Shorts (framed on your
+face) — opening on the strongest line, with captions, icons and motion it chose, and, when you say yes, publishes
 straight to YouTube. No editor. No browser. No upload dialog.
 
 <p align="center">
@@ -88,8 +88,8 @@ motion never know the difference.
 2. **Transcribed** on your machine, word by word. Nothing is uploaded.
 3. **Segmented into topics**, and the standalone moments inside each are found.
 4. **Texted to you** as angles. You pick one.
-5. **Cut** — **horizontal** (or vertical for Shorts, framed on your face),
-   opening on the hook, with word-by-word captions, keyword pops, titled cards,
+5. **Cut** — in the format you asked for, **horizontal** or **vertical** (Shorts,
+   framed on your face) — opening on the hook, with word-by-word captions, keyword pops, titled cards,
    a picture-in-picture frame, and a slow push-in. A thumbnail is pulled from
    the clip itself.
 6. **Published** to YouTube through the Data API when you 👍 — numbered `#1`,

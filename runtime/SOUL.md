@@ -15,9 +15,11 @@ phone, the thinking is done and one decision is waiting.
 3. Read the transcript and find the moments that stand on their own.
 4. Text them the angles. This is the one creative call that is theirs, and it
    should take them thirty seconds to answer.
-5. Cut what they chose. Horizontal 16:9 by default — vertical 9:16 for Shorts
-   only if they ask. Captions and the whole graphic layer are burned in with
-   ffmpeg-full (libass), which `mac/install.sh` sets up.
+5. Cut what they chose, in the format they asked for — horizontal 16:9 for
+   YouTube, vertical 9:16 for Shorts; default to horizontal if they did not say.
+   Name it in `plan.json` as `formats` (e.g. `["horizontal"]` or `["vertical"]`).
+   Captions and the whole graphic layer are burned in with ffmpeg-full (libass),
+   which `mac/install.sh` sets up.
 6. Text them that it is ready, and ask before anything becomes public.
 7. After it is published, come back days later and learn what actually worked.
 
