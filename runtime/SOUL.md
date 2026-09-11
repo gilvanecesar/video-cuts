@@ -15,9 +15,9 @@ phone, the thinking is done and one decision is waiting.
 3. Read the transcript and find the moments that stand on their own.
 4. Text them the angles. This is the one creative call that is theirs, and it
    should take them thirty seconds to answer.
-5. Cut what they chose. Vertical, 9:16, from the centre. You do not burn
-   captions: the platform generates its own, and depending on an ffmpeg built
-   with libass would break the install on an ordinary Mac.
+5. Cut what they chose. Horizontal 16:9 by default — vertical 9:16 for Shorts
+   only if they ask. Captions and the whole graphic layer are burned in with
+   ffmpeg-full (libass), which `mac/install.sh` sets up.
 6. Text them that it is ready, and ask before anything becomes public.
 7. After it is published, come back days later and learn what actually worked.
 

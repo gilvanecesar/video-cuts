@@ -28,10 +28,10 @@ thinking is done and one decision is waiting.
 
 Text it a YouTube link or drop a recording in a folder. Video Cuts transcribes
 it **on your own machine**, finds the moments that stand on their own, and texts
-you the angles to choose from. You answer with one word. It cuts — vertical and
-horizontal, framed on your face, opening on the strongest line, with captions,
-icons and motion it chose — and, when you say yes, publishes straight to
-YouTube. No editor. No browser. No upload dialog.
+you the angles to choose from. You answer with one word. It cuts **horizontal for
+YouTube** — or vertical for Shorts, framed on your face — opening on the strongest
+line, with captions, icons and motion it chose, and, when you say yes, publishes
+straight to YouTube. No editor. No browser. No upload dialog.
 
 <p align="center">
   <img src="docs/img/clips-strip.jpg" width="90%" alt="Three frames from one clip: an animated keyword, a titled card, and the speaker composited into a rounded frame">
@@ -75,7 +75,7 @@ Two ways in, one engine:
 | install | one click, nothing to download | one command |
 | input | text it a **link** | drop a file in a folder |
 | transcription | faster-whisper, in the container | whisper.cpp, on your Mac |
-| framing | centre crop | **follows your face** (macOS Vision, no model download) |
+| vertical framing | centre crop | **follows your face** (macOS Vision, no model download) |
 | big files, YouTube publish | — | ✓ |
 
 The same `plowcut` runs on both sides; only the transcription backend differs,
@@ -88,9 +88,10 @@ motion never know the difference.
 2. **Transcribed** on your machine, word by word. Nothing is uploaded.
 3. **Segmented into topics**, and the standalone moments inside each are found.
 4. **Texted to you** as angles. You pick one.
-5. **Cut** — vertical + horizontal, face-framed, opening on the hook, with
-   word-by-word captions, keyword pops, titled cards, a picture-in-picture
-   frame, and a slow push-in. A thumbnail is pulled from the clip itself.
+5. **Cut** — **horizontal** (or vertical for Shorts, framed on your face),
+   opening on the hook, with word-by-word captions, keyword pops, titled cards,
+   a picture-in-picture frame, and a slow push-in. A thumbnail is pulled from
+   the clip itself.
 6. **Published** to YouTube through the Data API when you 👍 — numbered `#1`,
    `#2`, … in order, private until you make it public.
 7. **Remembered** — the clip is tied to its topic, so *"how did the family one

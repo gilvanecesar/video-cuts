@@ -82,7 +82,7 @@ def config():
     # this text.
     c.setdefault("language", "auto")
     c.setdefault("model_size", "small")
-    c.setdefault("formats", ["vertical", "horizontal"])
+    c.setdefault("formats", ["horizontal"])   # vertical 9:16 ainda disponível via config
     c.setdefault("crop_x", "auto")  # "auto" = follow the face; or 0..1
     c.setdefault("push_in", 0.09)   # slow zoom over the clip; 0 disables
     return c
