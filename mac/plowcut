@@ -152,12 +152,19 @@ def fetch():
     intake = Path(config()["intake"])
     intake.mkdir(parents=True, exist_ok=True)
     note("fetching " + url)
-    r = subprocess.run(
-        [ytdlp, "-f", "bv*[height<=1080]+ba/b[height<=1080]/b",
-         "--merge-output-format", "mp4", "--no-playlist", "--newline",
-         "-o", str(intake / "%(title).80s.%(ext)s"),
-         "--print", "after_move:filepath", url],
-        capture_output=True, text=True, timeout=3600)
+    ff = ffbin()
+    cmd = [ytdlp, "-f", "bv*[height<=1080]+ba/b[height<=1080]/b",
+           "--merge-output-format", "mp4", "--no-playlist", "--newline",
+           "-o", str(intake / "%(title).80s.%(ext)s"),
+           "--print", "after_move:filepath", url]
+    # yt-dlp pulls video and audio as separate DASH streams and needs ffmpeg to
+    # mux them into one mp4. ffmpeg-full is keg-only (off PATH), so yt-dlp can't
+    # find it on its own — hand it the location, or it leaves the split .fNNN
+    # files behind and the merged .mp4 the rest of the pipeline expects never
+    # appears (the FileNotFoundError we hit).
+    if "/" in ff:
+        cmd[1:1] = ["--ffmpeg-location", str(Path(ff).parent)]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
     if r.returncode != 0:
         return {"error": "download failed", "stderr": (r.stderr or "")[-600:]}
     got = [l for l in r.stdout.strip().splitlines() if l.startswith("/")]
