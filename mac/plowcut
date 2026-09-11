@@ -268,6 +268,9 @@ def transcribe():
     r = ready()
     if not r.get("ready"):
         return r
+    # `ready` carries the duration; grab it now, because the whisper-cli branch
+    # below rebinds `r` to a CompletedProcess and `r.get(...)` would then raise.
+    duration_s = r.get("duration_s")
     c = config()
     src = Path(c["intake"]) / r["ready"]
     work = Path(c["work"]) / src.stem
@@ -319,7 +322,7 @@ def transcribe():
     # no second Latch prompt. `transcript` still exists for re-reading later.
     return {"transcribed": src.name, "language": lang,
             "transcript": str(work / "transcript.json"),
-            "duration_s": r.get("duration_s"),
+            "duration_s": duration_s,
             "lines": to_lines(words(work))}
 
 
