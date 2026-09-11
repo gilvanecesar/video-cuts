@@ -22,10 +22,11 @@ sh mac/install.sh
 This installs `ffmpeg-full` and `whisper-cpp` through Homebrew, downloads the
 transcription model (465MB, once) and three fonts, builds the face finder, and
 puts `plowcut` in `~/.dailies/bin`. It is idempotent: run it again and it does
-nothing. When it finishes it prints a checklist; every line should say `✓`.
+nothing. When it finishes it runs `plowcut status`, which should report
+`"ready": true` with nothing under `missing`.
 
-If one does not, the same line says how to fix it. `~/.dailies/bin/plowcut
-status` prints that checklist any time.
+If something is missing, each entry names its own fix. Run
+`~/.dailies/bin/plowcut status` to check any time.
 
 ## 2. The phone line
 
@@ -61,21 +62,32 @@ wait — it texts you when it has something to decide.
 
 **The first time, Latch will ask you to approve what the agent does on your
 Mac.** Each prompt names one thing — run `plowcut`, read the intake folder,
-open YouTube Studio. Click **Always Allow** (not "Allow Once"): each approval
+write the finished clip. Click **Always Allow** (not "Allow Once"): each approval
 is remembered, so a full first run asks about nine times and later runs ask
 nothing at all. Every command the agent runs is `plowcut` with a single fixed
 word, which is what makes those approvals stick.
 
-## 4. Publishing
+## 4. Publishing to YouTube
 
-When you approve a clip with 👍, the agent sends you the file and a ready-made
-title, description and tags. You drop the file into studio.youtube.com, paste
-the text, and send the agent the link once it is up — it records the link
-against the topic the clip came from.
+Connect your channel once, from your phone, with Google's device flow — no
+password ever reaches the agent. Ask the agent to connect YouTube; it texts you
+a short code:
 
-It does not upload for you: Plow Latch's browser cannot attach files to a page,
-and we would rather hand you a clip in ten seconds than pretend otherwise.
-Nothing is ever published without you doing that last step yourself.
+```
+[agent] "Go to google.com/device and enter WHJ-KKC-WBQD"
+[you]   approve on your phone, once
+```
+
+After that, when you approve a clip with 👍, the agent uploads it straight to
+YouTube through the Data API — no browser, no file picker. It lands **private**;
+while the app is unverified it stays private until you flip it public in one tap,
+which is also your final consent. Clips are numbered `#1`, `#2`, … in publish
+order, each with a thumbnail pulled from the clip itself.
+
+Publishing by browser is not possible — Plow Latch's browser drives Playwright,
+which cannot attach a file — so the Data API is the only path that truly uploads.
+Reading the channel (subscribers, views, which angle works) is network-only, so
+it runs in the container and answers even with your Mac asleep.
 
 ## Something is off?
 
@@ -88,6 +100,7 @@ Nothing is ever published without you doing that last step yourself.
 
 ## Without a Mac
 
-Deploy the cloud image from the agent's page on the Agent Index and text it a
-link. Transcription and cutting happen in the container; the clip comes back
+Once the agent is verified on the Agent Index, its page shows a one-click
+**Deploy** button (until then, that button is disabled — the Mac path above
+is the way in). After deploying, text it a link. Transcription and cutting happen in the container; the clip comes back
 in the thread. Face framing and YouTube publishing need the Mac path.
