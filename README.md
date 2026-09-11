@@ -36,7 +36,7 @@ Video Cuts keeps a **topic index across everything you record**. So it does what
 none of them can:
 
 - *"Where did I talk about my kids?"* → the exact sentence, the timestamp, and an offer to cut it.
-- *"How is the channel doing?"* → real numbers, read from your YouTube, crossed with your topics: **"your farm clips pull 50× the others — cut more of those."**
+- *"How is the channel doing?"* → real numbers, read live from your YouTube, crossed with your own topics — and a read on **which angle actually works**: *"your 'family in the 90s without phones' clips are 90% of the channel's views — that is the angle that works for you."* That sentence needs both the performance data and the topic memory; nothing else has both.
 
 <p align="center">
   <img src="docs/img/channel-stats.jpg" width="80%" alt="The channel dashboard the agent reports over iMessage: subscribers, total views, and recent clips ranked by views">
@@ -128,7 +128,9 @@ uploads. You connect your channel once, from your phone, with the device flow:
 [you]   approve on your phone, once
 ```
 
-After that every upload is silent. The agent never sees a password; the OAuth
+Reading the channel and uploading are network-only, so they run in the agent's
+container, not on your Mac — *"how is the channel doing?"* answers instantly,
+even with your Mac asleep. After that every upload is silent. The agent never sees a password; the OAuth
 token is stored per-owner and never leaves your machine. While the app is
 unverified, clips land **private** and you make them public in one tap — which
 is also the last consent you want to have.
