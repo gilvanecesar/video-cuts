@@ -9,7 +9,16 @@
   <a href="https://aiworthusing.com/agent-index/dailies">Agent Index</a> ·
   <a href="docs/INSTALL.md">Install</a> ·
   <a href="#how-it-works">How it works</a> ·
+  <a href="https://youtu.be/8cYmeKaYD-8">Watch the demo</a> ·
   Built for the <a href="https://luma.com/3uftu95w">Hermes Hackathon</a>
+</p>
+
+<p align="center">
+  <a href="https://youtu.be/8cYmeKaYD-8">
+    <img src="docs/img/demo-poster.jpg" width="72%" alt="Watch Video Cuts turn a raw recording into a published clip, end to end">
+  </a>
+  <br><b><a href="https://youtu.be/8cYmeKaYD-8">▶&nbsp; Watch a real run — raw file to published clip, in ~90 seconds</a></b>
+  <br><i>No montage. A recording dropped in a folder, asked for over iMessage, transcribed on the Mac,<br>cut to horizontal with captions and motion, and published to YouTube — by the agent.</i>
 </p>
 
 ---
@@ -114,8 +123,8 @@ git clone https://github.com/gilvanecesar/video-cuts.git && cd video-cuts
 sh mac/install.sh          # ffmpeg, whisper, model, fonts, face framing — idempotent
 ```
 
-`plowcut status` afterwards checks eight things and, for anything missing, says
-exactly how to fix it.
+`plowcut status` afterwards checks each piece it needs and, for anything
+missing, says exactly how to fix it.
 
 ## Publishing to YouTube
 
