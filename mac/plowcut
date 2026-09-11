@@ -1404,11 +1404,30 @@ def yt_upload():
     n = len(load(PUBLISHED, {})) + 1
     title = str(plan.get("title", "")).rstrip()
     import re as _re
+    changed = False
     if not _re.search(r"#\d+\s*$", title):
-        title = f"{title} #{n}"
-        plan["title"] = title
+        plan["title"] = f"{title} #{n}"
+        changed = True
+    # Never let an upload go up with YouTube's auto-frame: attach the poster
+    # cut() wrote beside the clip (<stem>.jpg), or, if it is missing, a frame
+    # grabbed here. The channel must be verified for the API to accept it;
+    # yt_upload.py degrades cleanly and says so when it is not.
+    if not plan.get("thumbnail"):
+        cand = Path(plan["file"]).with_suffix(".jpg")
+        if not cand.exists():
+            try:
+                subprocess.run([ffbin(), "-nostdin", "-v", "error", "-y",
+                                "-ss", "1", "-i", plan["file"], "-frames:v", "1",
+                                "-q:v", "2", str(cand)],
+                               check=True, capture_output=True, timeout=120)
+            except Exception:
+                cand = None
+        if cand and Path(cand).exists():
+            plan["thumbnail"] = str(cand)
+            changed = True
+    if changed:
         plan_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2))
-        r = _yt("upload")
+    r = _yt("upload")
     if r.get("uploaded"):
         # Record it the same way a manual publish would, tying the URL to the
         # topic the clip came from.
