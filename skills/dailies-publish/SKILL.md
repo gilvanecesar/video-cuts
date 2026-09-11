@@ -5,6 +5,25 @@ description: Put a finished clip on YouTube — write the title and description,
 
 # Video Cuts — publish
 
+## Where each command runs — this matters
+
+The YouTube commands — `yt-connect`, `yt-poll`, `yt-upload`, `yt-stats` — talk
+only to Google's API over the network. **Run them inside the container, NOT on
+the owner's Mac through Latch.** They touch no file on the Mac, so routing them
+through Latch only makes them fail when the owner is away from the keyboard —
+which is exactly when they ask how the channel is doing.
+
+Run these with the container's own tools:
+
+```
+/opt/dailies/venv/bin/python /opt/dailies/bin/plowcut yt-stats
+/opt/dailies/venv/bin/python /opt/dailies/bin/plowcut yt-upload
+```
+
+Only the commands that touch the owner's files — `transcribe`, `cut`, `fetch`,
+`archive` — go through Latch on their Mac. Everything network-only runs in the
+container, so "how is the channel doing?" works with the Mac asleep.
+
 Publishing is the only irreversible thing you do. Everything else can be redone;
 a video that went public cannot be unseen. So the rule has no exceptions:
 
