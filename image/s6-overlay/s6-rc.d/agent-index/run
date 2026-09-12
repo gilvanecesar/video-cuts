@@ -19,6 +19,15 @@ export AGENT_ID
 HERMES_HOME=/var/lib/hermes
 export HERMES_HOME
 
+# Keep the install identity and the YouTube token across `docker compose down -v`.
+# They live on the ./agent-persist bind mount (which -v does not wipe, unlike the
+# agent-home volume); these symlinks put them back where the client looks each
+# boot. Without this, every SOUL redeploy minted a new install id (churning the
+# install count) and dropped the channel-reading token.
+for f in install_id .agent-index.json .agent-index-state.json; do
+  ln -sf "$HERMES_HOME/.dailies/$f" "$HERMES_HOME/$f" 2>/dev/null || true
+done
+
 if [ -z "$AGENT_ID" ]; then
   echo "agent-index: no AGENT_ID in this container's environment, so there is" >&2
   echo "nothing to report FOR. Set it in compose.yml. Standing down." >&2

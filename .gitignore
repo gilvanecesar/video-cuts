@@ -4,3 +4,4 @@
 # YouTube OAuth — per-owner, never commit
 youtube-client.json
 youtube-token.json
+agent-persist/

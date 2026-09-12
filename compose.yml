@@ -4,6 +4,10 @@ services:
     volumes:
       - ./plow-credentials:/var/lib/plow/credentials.host:ro
       - agent-home:/var/lib/hermes
+      # Persisted across `down -v` (a bind mount, not a named volume): the
+      # YouTube token and the install identity live here, so a SOUL redeploy
+      # no longer churns the install count or drops the channel-reading token.
+      - ./agent-persist:/var/lib/hermes/.dailies
     # The agent checkpoints on SIGTERM; its supervisor allows 30s and Docker's
     # default 10s would orphan the transcript lease.
     # Which agent this is on the Agent Index. Without it the reporter stands
