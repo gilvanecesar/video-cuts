@@ -93,8 +93,12 @@ it runs in the container and answers even with your Mac asleep.
 
 - `plowcut status` — what is missing, and the fix for each
 - `docker compose logs agent` — the agent's own log
-- `docker compose down -v && docker compose up --build -d` — fresh start; this
-  wipes the agent's memory of past conversations, not your clips or index
+- `docker compose down -v && docker compose up --build -d` — fresh start,
+  needed after editing `runtime/SOUL.md`; this wipes the agent's memory of past
+  conversations, but **not** its install identity or your YouTube connection —
+  those live in `agent-persist/` (a bind mount) and survive `-v`, so you never
+  reconnect just to change the persona. Do not delete or commit `agent-persist/`;
+  it holds the token.
 - Recordings in `~/Movies/Dailies`, clips in `Cortes/`, finished originals in
   `Prontos/`, everything the agent knows in `~/.dailies/`
 
