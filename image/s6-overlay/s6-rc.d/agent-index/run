@@ -24,7 +24,7 @@ export HERMES_HOME
 # agent-home volume); these symlinks put them back where the client looks each
 # boot. Without this, every SOUL redeploy minted a new install id (churning the
 # install count) and dropped the channel-reading token.
-for f in install_id .agent-index.json; do
+for f in ; do
   ln -sf "$HERMES_HOME/.dailies/$f" "$HERMES_HOME/$f" 2>/dev/null || true
 done
 # The reporter rewrites .agent-index-state.json atomically (.new -> rename)
