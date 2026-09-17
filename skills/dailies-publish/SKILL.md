@@ -1,6 +1,6 @@
 ---
 name: dailies-publish
-description: Put a finished clip on YouTube — write the title and description, upload it through the owner's own browser session, and record what went out. Use when the owner approves a clip for publishing, asks what is waiting to go up, or asks how something performed.
+description: Put a finished clip on YouTube — write the title and description, upload it with plowcut yt-upload from inside the container (the YouTube Data API, never the browser), and record what went out. Use when the owner approves a clip for publishing, asks what is waiting to go up, asks how the channel or a video is performing, or asks about subscribers/views.
 ---
 
 # Video Cuts — publish
@@ -13,16 +13,22 @@ the owner's Mac through Latch.** They touch no file on the Mac, so routing them
 through Latch only makes them fail when the owner is away from the keyboard —
 which is exactly when they ask how the channel is doing.
 
-Run these with the container's own tools:
+Run these with your own **`shell`** tool — the container you think in — exactly:
 
 ```
 /opt/dailies/venv/bin/python /opt/dailies/bin/plowcut yt-stats
 /opt/dailies/venv/bin/python /opt/dailies/bin/plowcut yt-upload
 ```
 
+**Do NOT run `yt-*` through `plow_run_command` or any `plow_*` tool.** Those go
+to the owner's Mac, where this YouTube token does not live — you will get "token
+expired" from the wrong token and wrongly conclude the channel is disconnected.
+The valid token is in your container; `shell` is the only right surface for it.
+
 Only the commands that touch the owner's files — `transcribe`, `cut`, `fetch`,
-`archive` — go through Latch on their Mac. Everything network-only runs in the
-container, so "how is the channel doing?" works with the Mac asleep.
+`archive` — go through Latch (`plow_run_command`) on their Mac. Everything
+network-only (`yt-stats`, `yt-upload`, `yt-connect`, `yt-poll`) runs in the
+container via `shell`, so "how is the channel doing?" works with the Mac asleep.
 
 Publishing is the only irreversible thing you do. Everything else can be redone;
 a video that went public cannot be unseen. So the rule has no exceptions:
