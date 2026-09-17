@@ -63,11 +63,16 @@ RUN set -eu; \
 
 COPY image/s6-overlay/ /etc/s6-overlay/
 
-# Identity. Root-owned and world-readable: first boot re-asserts root ownership
-# and does not touch the mode, so 0600 here would leave an identity the agent
-# cannot read.
-COPY --chown=0:0 runtime/SOUL.md /var/lib/hermes/SOUL.md
-RUN chmod 0644 /var/lib/hermes/SOUL.md
+# Identity. The base composes $HOME/SOUL.md on EVERY boot as plow-seed/SOUL.md
+# (its base rules) + plow-seed/persona.md (the variant's own), via
+# compose_identity() in /etc/s6-overlay/scripts/plow-init.py. So we ship our
+# persona as persona.md, NOT as /var/lib/hermes/SOUL.md: that path is under the
+# agent-home volume (shadowed at runtime) AND compose_identity overwrites it
+# every boot. Composing (not replacing) also keeps the base's voice/judgement/
+# Latch-routing rules — replacing the whole SOUL silently dropped them upstream.
+# Root-owned, world-readable so init reads it.
+COPY --chown=0:0 runtime/SOUL.md /opt/hermes/plow-seed/persona.md
+RUN chmod 0644 /opt/hermes/plow-seed/persona.md
 
 # Capabilities.
 COPY --chown=10000:10000 skills/ /var/lib/hermes/skills/

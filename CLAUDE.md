@@ -70,8 +70,22 @@ legenda** — a plataforma gera a dela, e depender de build customizada quebrari
 a instalação em qualquer Mac comum. Decisão do dono, e ela matou o maior risco
 de instalação do projeto.
 
-**4. Editar `SOUL.md` exige `docker compose down -v`.** Só `down` mantém o
-volume e o agente continua com a persona velha. Pegadinha nº 1 do dia a dia.
+**4. A persona vai em `plow-seed/persona.md`, não em `/var/lib/hermes/SOUL.md`.**
+A base compõe o `$HOME/SOUL.md` **a cada boot** — `compose_identity()` em
+`/etc/s6-overlay/scripts/plow-init.py` lê `plow-seed/SOUL.md` (as regras-base) e
+concatena `plow-seed/persona.md` (a da variante), e sobrescreve o SOUL do home
+com `os.replace`. Por isso o Dockerfile envia nosso `runtime/SOUL.md` como
+`/opt/hermes/plow-seed/persona.md` (não como `/var/lib/hermes/SOUL.md`: esse
+caminho fica **sob o volume** — escondido em runtime — e ainda seria reescrito
+todo boot). Consequência boa: **editar a persona NÃO exige `down -v`** — como o
+arquivo vive na imagem (fora do volume), `up --build -d` recria o container e o
+`compose_identity` recompõe o SOUL no próximo boot, **preservando o install id e
+o token do YouTube** (bind-mount). Só use `down -v` quando precisar mesmo zerar o
+volume (e aí o install id churna). Compor em vez de substituir também mantém as
+regras-base (voz, juízo, roteamento do Latch), que uma variante que trocasse o
+SOUL inteiro derrubaria em silêncio (visto no upstream). Verificado em 17/09:
+sem persona, o agente respondia genérico ("I'm Aspen…"); com o `persona.md`, o
+SOUL ativo passa a ter o bloco `# Video Cuts` na linha 73.
 
 **5. Python do python.org não tem CA bundle.** Deu `CERTIFICATE_VERIFY_FAILED`
 no `plow-agents login`. Conserto: rodar `/Applications/Python 3.13/Install
