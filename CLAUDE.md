@@ -166,6 +166,28 @@ yt-status · yt-stats · status`. yt_upload.py (stdlib) faz a parte da API.
 - **Vídeo sobe PRIVADO** enquanto o app não é verificado pelo Google; o dono
   torna público com 1 clique (é também o portão de aprovação).
 
+### Armadilhas do base novo (17/09/2026) — persona + yt-* pelo shell
+
+- **`yt-*` rodam com a ferramenta `shell` (container), NUNCA `plow_run_command`.**
+  O `plow_run_command` (e todo `plow_*`) vai pro **Mac** via Latch, onde o token
+  do YouTube NÃO mora (o token válido está no `.dailies` do container, bind-mount
+  de `./agent-persist`). O HERMES.md empurra forte pra "default to this Mac", então
+  o agente rodava `plowcut yt-stats` no Mac → token errado → "token expired" → caía
+  no navegador. O SOUL e a skill `dailies-publish` agora nomeiam o `shell` e o
+  comando exato `/opt/dailies/venv/bin/python /opt/dailies/bin/plowcut yt-stats` e
+  proíbem `plow_run_command` pros `yt-*`. Só `fetch/transcribe/cut/archive` (tocam
+  arquivo do Mac) vão por Latch. Corrigido no commit `3ce1d47`, confirmado ao vivo
+  (2.690 inscritos via Data API, sem navegador).
+- **Backscroll da thread envenena o comportamento.** O agente relê as próprias
+  mensagens antigas do iMessage a cada sessão nova; se ele errou antes ("token
+  expirou / navegador"), papagaia a conclusão SEM re-checar. `hermes sessions
+  delete` NÃO limpa isso — o histórico vive na thread do iMessage, não na sessão
+  do hermes. Instalador novo começa com thread limpa e lê o SOUL/skill certos de
+  cara; pra demo no aparelho do dono, limpar a conversa no Messages resolve.
+- **Testar pela CLI (`hermes -z ... --yolo`) não vale** pra checar comportamento:
+  o modo one-shot não herda a auth de inferência do gateway → `HTTP 401 Invalid or
+  revoked token` (token do MODELO, não o do YouTube). Teste real é pelo iMessage.
+
 ### Pendente
 - Verificação no Agent Index (abre 14/09, requisito pra ganhar).
 - Vídeo de demonstração na página (cortado pelo próprio Video Cuts).
