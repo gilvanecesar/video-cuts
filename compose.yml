@@ -12,6 +12,8 @@ services:
     # default 10s would orphan the transcript lease.
     # Which agent this is on the Agent Index. Without it the reporter stands
     # down rather than guessing a name, and nothing is counted.
+    env_file:
+      - ./plow-credentials   # new base reads PLOW_API_BASE/PLOW_AGENT_TOKEN from the env
     environment:
       AGENT_ID: "${AGENT_ID:-dailies}"
     stop_grace_period: 35s
