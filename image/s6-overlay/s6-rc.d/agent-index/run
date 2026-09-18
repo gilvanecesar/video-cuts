@@ -1,5 +1,5 @@
 #!/bin/sh
-# Report this agent's token usage to the Agent Index, hourly.
+# Report this agent's token usage to the Agent Index, every 5 minutes.
 #
 # There is no switch. The reporter is in this image because someone put it here,
 # and that is the decision. A flag would ask again, in a second place that can
@@ -48,26 +48,26 @@ while :; do
   #   0 registered   3 not registered   2 state exists but is unreadable
   #
   # 2 is not 3. Registering over state the client could not read mints against a
-  # new install id and strands every hour this install already published — so
-  # that hour is skipped instead. stdout is dropped; it says the same thing
-  # every hour. stderr is kept: on 2 it names the file it could not read.
+  # new install id and strands every report this install already published — so
+  # that cycle is skipped instead. stdout is dropped; it says the same thing
+  # every cycle. stderr is kept: on 2 it names the file it could not read.
   as_agent "$PY" "$CLIENT" status >/dev/null
   case $? in
     0) ;;
     3)
       as_agent env AGENT_ID="$AGENT_ID" PLOW_AGENT_TOKEN="$PLOW_AGENT_TOKEN" \
         "$PY" "$CLIENT" --register --agent "$AGENT_ID" >/dev/null || {
-          echo "agent-index: no index key this hour, not reporting" >&2
-          /bin/sleep 3600; continue; }
+          echo "agent-index: no index key this cycle, not reporting" >&2
+          /bin/sleep 300; continue; }
       ;;
     *)
       echo "agent-index: could not read this install's state (above);" >&2
       echo "standing off rather than registering over it." >&2
-      /bin/sleep 3600; continue
+      /bin/sleep 300; continue
       ;;
   esac
 
   as_agent env AGENT_ID="$AGENT_ID" "$PY" "$CLIENT" --agent "$AGENT_ID" >/dev/null \
-    || echo "agent-index: this hour's report did not go through" >&2
-  /bin/sleep 3600
+    || echo "agent-index: this cycle's report did not go through" >&2
+  /bin/sleep 300
 done

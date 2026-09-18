@@ -157,7 +157,7 @@ is also the last consent you want to have.
 
 - **[Latch](https://plow.co/latch)** — approved, sandboxed access to your Mac.
 - **[hermes-plow-plugin](https://github.com/plow-pbc/hermes-plow-plugin)** — the agent's phone line.
-- **[agent-index-client](https://github.com/plow-pbc/agent-index-client)** — usage reporting, an hourly s6 service.
+- **[agent-index-client](https://github.com/plow-pbc/agent-index-client)** — usage reporting, an s6 service that reports every 5 minutes.
 
 ## Under the hood
 
