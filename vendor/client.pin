@@ -4,6 +4,6 @@
 # credential, so a moving reference would substitute unreviewed code under it.
 # The checksum is the second half of that: a sha in a URL is only as good as the
 # host serving it. Bumping either is an edit somebody reads.
-sha=b3c6f12a8bba71909dbcfa36ed13e9fd63ace8da
-sha256=c3bf54ed37aec22704b8003a7ff6385a1fd3ef49207ce55613ddc41df36a1b01
+sha=3f116994930cb3d1c23a485851953dd6c1eef039
+sha256=b23e7db974b1bd00b50557b44d759df170fc6ef17b471c9cfc0cd975843b535c
 path=standalone/agent_index_client.py
