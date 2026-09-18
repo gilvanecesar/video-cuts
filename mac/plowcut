@@ -72,6 +72,10 @@ def config():
     c.setdefault("venv", "/opt/dailies/venv" if Path("/opt/dailies/venv").exists()
                  else str(HOME / "venv"))
     c.setdefault("settle_seconds", 90)   # size must hold still this long
+    # Which browser's cookies `fetch` borrows to get past YouTube's 403 wall on
+    # media downloads. Default "chrome"; "" disables it, or name the browser the
+    # owner is signed into YouTube on (safari/firefox/edge).
+    c.setdefault("fetch_cookies_browser", "chrome")
     # small.en, not base.en: base garbles roughly a third of a recording, and
     # every topic and moment the agent picks rests on this text. 465MB and
     # ~23x realtime on an M4 is a cheap price for a transcript worth reading.
@@ -149,7 +153,8 @@ def fetch():
     if not ytdlp or not Path(ytdlp).exists():
         return {"error": "yt-dlp is not installed", "fix": "install yt-dlp"}
 
-    intake = Path(config()["intake"])
+    c = config()
+    intake = Path(c["intake"])
     intake.mkdir(parents=True, exist_ok=True)
     note("fetching " + url)
     ff = ffbin()
@@ -164,9 +169,26 @@ def fetch():
     # appears (the FileNotFoundError we hit).
     if "/" in ff:
         cmd[1:1] = ["--ffmpeg-location", str(Path(ff).parent)]
+    # YouTube now walls anonymous media downloads with 403 (SABR / PO-token), so a
+    # bare yt-dlp gets the metadata but not the stream. The owner is downloading
+    # their OWN videos, and they are signed in on their browser — so borrow that
+    # session. `fetch_cookies_browser` (default "chrome"; set "" to disable, or
+    # "safari"/"firefox"/"edge") authenticates the download as the owner and the
+    # wall drops. It is harmless on public videos that would download anyway.
+    cookies_browser = c.get("fetch_cookies_browser", "chrome")
+    if cookies_browser:
+        cmd[1:1] = ["--cookies-from-browser", cookies_browser]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
     if r.returncode != 0:
-        return {"error": "download failed", "stderr": (r.stderr or "")[-600:]}
+        stderr = (r.stderr or "")[-600:]
+        hint = None
+        if "403" in stderr or "Forbidden" in stderr or "cookies" in stderr.lower():
+            hint = (f"YouTube blocked the download. It needs the owner's browser "
+                    f"cookies: make sure they are signed into YouTube in "
+                    f"{cookies_browser or 'their browser'}, or set "
+                    f"`fetch_cookies_browser` in ~/.dailies/config.json to the "
+                    f"browser they use (chrome/safari/firefox/edge).")
+        return {"error": "download failed", "stderr": stderr, **({"fix": hint} if hint else {})}
     got = [l for l in r.stdout.strip().splitlines() if l.startswith("/")]
     if not got:
         return {"error": "downloaded but could not tell where",

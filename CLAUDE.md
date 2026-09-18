@@ -168,16 +168,27 @@ yt-status · yt-stats · status`. yt_upload.py (stdlib) faz a parte da API.
 
 ### Armadilhas do base novo (17/09/2026) — persona + yt-* pelo shell
 
-- **`yt-*` rodam com a ferramenta `shell` (container), NUNCA `plow_run_command`.**
-  O `plow_run_command` (e todo `plow_*`) vai pro **Mac** via Latch, onde o token
-  do YouTube NÃO mora (o token válido está no `.dailies` do container, bind-mount
-  de `./agent-persist`). O HERMES.md empurra forte pra "default to this Mac", então
-  o agente rodava `plowcut yt-stats` no Mac → token errado → "token expired" → caía
-  no navegador. O SOUL e a skill `dailies-publish` agora nomeiam o `shell` e o
-  comando exato `/opt/dailies/venv/bin/python /opt/dailies/bin/plowcut yt-stats` e
-  proíbem `plow_run_command` pros `yt-*`. Só `fetch/transcribe/cut/archive` (tocam
-  arquivo do Mac) vão por Latch. Corrigido no commit `3ce1d47`, confirmado ao vivo
-  (2.690 inscritos via Data API, sem navegador).
+- **TODO `plowcut` (inclusive `yt-*`) roda no MAC via Latch (`PC`), não no
+  container.** Regra decidida em 18/09 depois de errar duas vezes. O `yt-upload`
+  precisa do **arquivo de vídeo, que está no Mac** (o `cut` escreve lá), e o token
+  válido também está no Mac (`~/.dailies/youtube-token.json`, que se auto-renova
+  pelo refresh token). Token + arquivo no mesmo lugar = upload lê o clipe local,
+  **sem ponte**. Erro nº1: rodar `yt-stats` no Mac com token vencido → o agente
+  caía no navegador; consertado com a regra "nunca navegador, se vencer rode
+  `yt-connect`" (não mudando de máquina). Erro nº2 (commit `3ce1d47`, revertido):
+  mandei `yt-*` pro `shell` do container "porque o token de lá estava válido" —
+  mas aí o **upload não acha o arquivo** (Mac ≠ container). O "token expired" que
+  motivou aquilo era **transitório** (o refresh rolou sozinho às 16:50). Estado
+  final: SOUL + skill `dailies-publish` mandam `[PC, "yt-stats"|"yt-upload"|
+  "yt-connect"]` no Mac. Se algum dia precisar de "stats com Mac dormindo", aí sim
+  vale um token no container — mas não vale a dupla-manutenção hoje.
+- **Download do YouTube bate 403 (muro SABR/PO-token).** `fetch` anônimo pega só
+  metadados; a mídia é bloqueada. Conserto: `fetch` agora usa
+  `--cookies-from-browser` (config `fetch_cookies_browser`, default `chrome`) —
+  autentica como dono (são os vídeos dele) e o muro cai. Verificado 18/09. Também:
+  o `ffmpeg` do Homebrew (`/opt/homebrew/bin`) está quebrado (`libx265` faltando);
+  o plowcut usa o `ffmpeg-full` (keg-only), que funciona — o `fetch`/`cut` já
+  apontam `--ffmpeg-location` pra ele.
 - **Backscroll da thread envenena o comportamento.** O agente relê as próprias
   mensagens antigas do iMessage a cada sessão nova; se ele errou antes ("token
   expirou / navegador"), papagaia a conclusão SEM re-checar. `hermes sessions

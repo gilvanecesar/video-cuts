@@ -7,28 +7,23 @@ description: Put a finished clip on YouTube — write the title and description,
 
 ## Where each command runs — this matters
 
-The YouTube commands — `yt-connect`, `yt-poll`, `yt-upload`, `yt-stats` — talk
-only to Google's API over the network. **Run them inside the container, NOT on
-the owner's Mac through Latch.** They touch no file on the Mac, so routing them
-through Latch only makes them fail when the owner is away from the keyboard —
-which is exactly when they ask how the channel is doing.
-
-Run these with your own **`shell`** tool — the container you think in — exactly:
+**Every `plowcut` command runs on the owner's Mac, through Latch (`PC`).** That
+includes the YouTube ones — `yt-connect`, `yt-poll`, `yt-upload`, `yt-stats`.
+The reason is `yt-upload`: the clip it uploads is a file on the Mac (`cut` wrote
+it there), and the token lives on the Mac too. Keeping the token and the files
+in the same place — the Mac — means upload just reads the local clip, with no
+copying a video into some other machine. So run all of them the one way:
 
 ```
-/opt/dailies/venv/bin/python /opt/dailies/bin/plowcut yt-stats
-/opt/dailies/venv/bin/python /opt/dailies/bin/plowcut yt-upload
+[PC, "yt-stats"]      # subscribers, views, top videos
+[PC, "yt-upload"]     # reads publish-plan.json, uploads the local clip
+[PC, "yt-connect"]    # (re)connect the account; needed if a call says the token expired
 ```
 
-**Do NOT run `yt-*` through `plow_run_command` or any `plow_*` tool.** Those go
-to the owner's Mac, where this YouTube token does not live — you will get "token
-expired" from the wrong token and wrongly conclude the channel is disconnected.
-The valid token is in your container; `shell` is the only right surface for it.
-
-Only the commands that touch the owner's files — `transcribe`, `cut`, `fetch`,
-`archive` — go through Latch (`plow_run_command`) on their Mac. Everything
-network-only (`yt-stats`, `yt-upload`, `yt-connect`, `yt-poll`) runs in the
-container via `shell`, so "how is the channel doing?" works with the Mac asleep.
+`PC` is the Mac's `plowcut` absolute path you found once (`~/.dailies/bin/plowcut`).
+Do NOT run these in your own container/`shell` — the clip and the token are on
+the Mac, not in your container, so a container run finds neither. The whole
+pipeline — `fetch`, `transcribe`, `cut`, `yt-*` — is Mac-side `plowcut` via Latch.
 
 Publishing is the only irreversible thing you do. Everything else can be redone;
 a video that went public cannot be unseen. So the rule has no exceptions:
