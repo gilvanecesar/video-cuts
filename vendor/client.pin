@@ -1,9 +1,0 @@
-# The Agent Index usage client, pinned.
-#
-# A sha, never a branch. This file is executed inside an agent that holds a live
-# credential, so a moving reference would substitute unreviewed code under it.
-# The checksum is the second half of that: a sha in a URL is only as good as the
-# host serving it. Bumping either is an edit somebody reads.
-sha=3f116994930cb3d1c23a485851953dd6c1eef039
-sha256=b23e7db974b1bd00b50557b44d759df170fc6ef17b471c9cfc0cd975843b535c
-path=standalone/agent_index_client.py

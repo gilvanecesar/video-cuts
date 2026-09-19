@@ -2,8 +2,8 @@
 #
 # Pinned by tag AND digest together: the tag names the base commit, the digest
 # is what actually resolves. Bump both, never one.
-#   base commit: db182f335c727469d7de4eaf25b5d333670b3069  (2026-09-04)
-FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-51f83158a70a383f03a4d03dbd8b6ea102cf0361@sha256:253d7ed3409effa7fa59113d93b4b79bb731d8264cdaf4cd60294924d0110a2e
+#   base commit: ef0019372ff8bca593611b31ebd2e08f9f1458ff  (2026-09-18)
+FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-ef0019372ff8bca593611b31ebd2e08f9f1458ff@sha256:a8a2f97ad78b8192d80a984dce81d3bf5a9a883d18cb7b677704913a09b56aee
 
 # The Python side of the pipeline, for when there is no Mac underneath. A cloud
 # install has no Homebrew and no whisper.cpp, so faster-whisper does the
@@ -45,23 +45,6 @@ RUN chmod -R a+rX /opt/dailies \
  && chmod 0755 /opt/dailies/bin/plowcut /opt/dailies/bin/yt_upload.py \
  && mkdir -p /var/lib/hermes/.dailies/intake \
  && chown -R 10000:10000 /var/lib/hermes/.dailies
-
-# The usage reporter, fetched at build from the commit vendor/client.pin names
-# and checked against the hash beside it. Fetched rather than committed because
-# plow-pbc/agent-index-client owns that file; pinned rather than tracked from a
-# branch because this runs inside an agent holding a live credential.
-COPY vendor/client.pin /opt/plow/agent-index-client.pin
-RUN set -eu; \
-    sha="$(sed -n 's/^sha=//p' /opt/plow/agent-index-client.pin)"; \
-    want="$(sed -n 's/^sha256=//p' /opt/plow/agent-index-client.pin)"; \
-    path="$(sed -n 's/^path=//p' /opt/plow/agent-index-client.pin)"; \
-    curl -fsS --max-time 60 -o /opt/plow/agent-index-client.py \
-      "https://raw.githubusercontent.com/plow-pbc/agent-index-client/${sha}/${path}"; \
-    got="$(sha256sum /opt/plow/agent-index-client.py | cut -d' ' -f1)"; \
-    [ "$got" = "$want" ] || { echo "agent-index client is $got, pin says $want" >&2; exit 1; }; \
-    chmod 0644 /opt/plow/agent-index-client.py
-
-COPY image/s6-overlay/ /etc/s6-overlay/
 
 # Identity. The base composes $HOME/SOUL.md on EVERY boot as plow-seed/SOUL.md
 # (its base rules) + plow-seed/persona.md (the variant's own), via
