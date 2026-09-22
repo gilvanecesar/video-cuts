@@ -3,7 +3,7 @@
 # Pinned by tag AND digest together: the tag names the base commit, the digest
 # is what actually resolves. Bump both, never one.
 #   base commit: db182f335c727469d7de4eaf25b5d333670b3069  (2026-09-04)
-FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-51f83158a70a383f03a4d03dbd8b6ea102cf0361@sha256:253d7ed3409effa7fa59113d93b4b79bb731d8264cdaf4cd60294924d0110a2e
+FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-67021a7029e33e80bcb27899be6515a5a0e9b37b@sha256:0c3892e93c1a001c61fb7106396e0a4b7e0219008184fd90719caa84a3390ff0
 
 # The Python side of the pipeline, for when there is no Mac underneath. A cloud
 # install has no Homebrew and no whisper.cpp, so faster-whisper does the
